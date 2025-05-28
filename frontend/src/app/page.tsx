@@ -8,9 +8,8 @@ import { Title } from "@/components/ui/Title"
 import { Metric } from "@/components/ui/Metric"
 import { Text } from "@/components/ui/Text"
 import { Tracker } from "@/components/ui/Tracker"
+import { OperatorId } from "@/components/ui/OperatorId"
 import { fetchFromAPI } from "./api/insights/route"
-import Link from "next/link"
-import { ArrowRightIcon } from "@heroicons/react/24/outline"
 
 interface OperatorData {
   lp_csid: string
@@ -29,12 +28,13 @@ interface ActivityGap {
 }
 
 interface WeeklyPattern {
+  lp_csid: string
   jour_semaine: number
   nom_jour: string
-  total_connexions: number
-  total_clients: number
-  moyenne_connexions: number
-  moyenne_clients: number
+  jour: string
+  nb_connexions: number
+  nb_clients_uniques: number
+  nb_ips_uniques: number
 }
 
 interface Anomaly {
@@ -62,11 +62,15 @@ export default function Home() {
     anomalies: []
   })
 
+  const [showAllGaps, setShowAllGaps] = useState(false);
+  const [showAllAnomalies, setShowAllAnomalies] = useState(false);
+  const [topOperators, setTopOperators] = useState(10);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
         const [monthlyStats, weeklyPatterns, activityGaps, operatorDashboard, anomalies] = await Promise.all([
-          fetchFromAPI('/monthly-stats'),
+          fetchFromAPI(`/monthly-stats/${topOperators}`),
           fetchFromAPI('/weekly-patterns'),
           fetchFromAPI('/activity-gaps'),
           fetchFromAPI('/operator-dashboard'),
@@ -86,7 +90,7 @@ export default function Home() {
     }
 
     fetchData()
-  }, [])
+  }, [topOperators])
 
   // Calculate KPIs
   const totalOperators = data.operator_dashboard.length
@@ -94,6 +98,17 @@ export default function Home() {
   const totalConnections = data.operator_dashboard.reduce((acc, op) => acc + op.nb_connexions_total, 0)
   const totalCountries = data.operator_dashboard.reduce((acc, op) => acc + op.nb_pays_total, 0)
 
+  // Prepare weekly activity data
+  const weeklyPatternsWithFormattedDate = data.weekly_patterns.map(item => ({
+    ...item,
+    jour_formate: item.jour
+      ? new Date(item.jour).toLocaleString('fr-FR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        })
+      : ''
+  }));
   // Prepare activity gaps data for Tracker
   const getGapTrackerData = (operator: ActivityGap) => {
     const gaps = operator.detail_pauses.split('; ')
@@ -122,6 +137,8 @@ export default function Home() {
     }
     return acc
   }, [])
+
+  const displayedGaps = showAllGaps ? data.activity_gaps : data.activity_gaps.slice(0, 5);
 
   return (
     <div className="p-4 space-y-6">
@@ -153,8 +170,20 @@ export default function Home() {
       <Card>
         <Title>Évolution Mensuelle de l'Activité</Title>
         <Text className="text-sm text-gray-500 mb-4">
-          Visualisation des tendances d'activité sur les 12 derniers mois. Les pics peuvent indiquer des anomalies ou des périodes d'activité intense.
+          Visualisation des tendances d'activité des {topOperators} opérateurs les plus actifs sur les 12 derniers mois. Les pics peuvent indiquer des anomalies ou des périodes d'activité intense.
         </Text>
+        <select
+              id="topOperators"
+              value={topOperators}
+              onChange={(e) => setTopOperators(Number(e.target.value))}
+              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {[5, 10, 15, 20].map((num) => (
+                <option key={num} value={num}>
+                  {num}
+                </option>
+              ))}
+            </select>
         <AreaChart
           className="h-72 mt-4"
           data={monthlyActivityData}
@@ -167,23 +196,34 @@ export default function Home() {
         />
       </Card>
 
+      <Card>
+        <Title>Activité Hebdomadaire</Title>
+        <Text>Visualisation de l'activité hebdomadaire des opérateurs sur les 8 dernières semaines.</Text>
+        <AreaChart
+          className="mt-6 h-80"
+          data={weeklyPatternsWithFormattedDate}
+          index="jour_formate"
+          categories={['nb_connexions', 'nb_ips_uniques', 'nom_jour']}
+          colors={['emerald']}
+          showLegend={true}
+          showYAxis
+          showXAxis
+          valueFormatter={(number: number) => number.toLocaleString()}
+          yAxisWidth={50}
+        />
+    </Card>
+
       {/* Analyse des Pauses d'Activité */}
       <Card>
         <Title>Analyse des Pauses d'Activité</Title>
         <Text className="text-sm text-gray-500 mb-4">
           Visualisation des périodes d&apos;inactivité des opérateurs. Rouge = pause longue (&gt;7 jours), Jaune = pause moyenne (3-7 jours), Vert = pause courte (&lt;3 jours).
         </Text>
-        <div className="space-y-4 mt-4">
-          {data.activity_gaps.slice(0, 5).map((operator: ActivityGap, index: number) => (
+        <div className="space-y-4 mt-4 max-h-[600px] overflow-y-auto pr-2">
+          {displayedGaps.map((operator: ActivityGap, index: number) => (
             <div key={index} className="space-y-2">
               <div className="flex justify-between items-center">
-                <Text className="font-medium">Opérateur {operator.lp_csid.slice(0, 8)}...</Text>
-                <Link 
-                  href={`/operateur/${operator.lp_csid}`}
-                  className="text-sm text-blue-500 hover:text-blue-700 flex items-center gap-1"
-                >
-                  Voir détails <ArrowRightIcon className="w-4 h-4" />
-                </Link>
+                <OperatorId id={operator.lp_csid} className="font-medium" />
               </div>
               <Tracker
                 data={getGapTrackerData(operator)}
@@ -205,6 +245,16 @@ export default function Home() {
               </div>
             </div>
           ))}
+          {data.activity_gaps.length > 5 && (
+            <div className="flex justify-center mt-4">
+              <button
+                onClick={() => setShowAllGaps(!showAllGaps)}
+                className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
+              >
+                {showAllGaps ? "Voir moins" : "Voir plus"}
+              </button>
+            </div>
+          )}
         </div>
       </Card>
 
@@ -214,12 +264,12 @@ export default function Home() {
         <Text className="text-sm text-gray-500 mb-4">
           Détection des pics et chutes d&apos;activité significatifs (plus de 2 écarts-types par rapport à la moyenne).
         </Text>
-        <div className="space-y-4 mt-4">
-          {data.anomalies.slice(0, 5).map((anomaly: Anomaly, index: number) => (
+        <div className="space-y-4 mt-4 max-h-[600px] overflow-y-auto pr-2">
+          {(showAllAnomalies ? data.anomalies : data.anomalies.slice(0, 5)).map((anomaly: Anomaly, index: number) => (
             <div key={index} className="border-b pb-4 last:border-b-0">
               <div className="flex justify-between items-start mb-2">
                 <div>
-                  <Text className="font-medium">Opérateur {anomaly.lp_csid.slice(0, 8)}...</Text>
+                  <OperatorId id={anomaly.lp_csid} className="font-medium" />
                   <Text className="text-sm text-gray-500">
                     {new Date(anomaly.date).toLocaleDateString('fr-FR', { 
                       day: 'numeric',
@@ -259,46 +309,16 @@ export default function Home() {
             </div>
           ))}
         </div>
-      </Card>
-
-      {/* Patterns d'Activité Hebdomadaires */}
-      <Card>
-        <Title>Patterns d&apos;Activité Hebdomadaires</Title>
-        <Text className="text-sm text-gray-500 mb-4">
-          Distribution moyenne de l&apos;activité par jour de la semaine sur les 8 dernières semaines.
-        </Text>
-        <BarChart
-          className="h-72 mt-4"
-          data={data.weekly_patterns}
-          index="nom_jour"
-          categories={["moyenne_connexions"]}
-          colors={["blue"]}
-          valueFormatter={(number: number) => number.toLocaleString()}
-          showLegend={false}
-          showGridLines={true}
-        />
-        <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <Text className="font-medium">Jours de Forte Activité</Text>
-            <Text className="text-gray-600">
-              {data.weekly_patterns
-                .sort((a, b) => b.moyenne_connexions - a.moyenne_connexions)
-                .slice(0, 2)
-                .map(p => p.nom_jour)
-                .join(', ')}
-            </Text>
+        {data.anomalies.length > 5 && (
+          <div className="flex justify-center mt-4">
+            <button
+              onClick={() => setShowAllAnomalies(!showAllAnomalies)}
+              className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
+            >
+              {showAllAnomalies ? "Voir moins" : "Voir plus"}
+            </button>
           </div>
-          <div>
-            <Text className="font-medium">Jours de Faible Activité</Text>
-            <Text className="text-gray-600">
-              {data.weekly_patterns
-                .sort((a, b) => a.moyenne_connexions - b.moyenne_connexions)
-                .slice(0, 2)
-                .map(p => p.nom_jour)
-                .join(', ')}
-            </Text>
-          </div>
-        </div>
+        )}
       </Card>
     </div>
   )

@@ -14,11 +14,11 @@ import {
 
 import {
   AvailableChartColors,
+  type AvailableChartColorsKeys,
   constructCategoryColors,
   getColorClassName,
-  type AvailableChartColorsKeys,
-} from "@/lib/chartUtils"
-import { cx } from "@/lib/utils"
+} from "../../utils/chartColors"
+import { cx } from "../../utils/cx"
 
 const sumNumericArray = (arr: number[]): number =>
   arr.reduce((sum, num) => sum + num, 0)
@@ -97,7 +97,7 @@ const ChartTooltip = ({
                 <p
                   className={cx(
                     // base
-                    "text-right whitespace-nowrap",
+                    "whitespace-nowrap text-right",
                     // text color
                     "text-gray-700 dark:text-gray-300",
                   )}
@@ -108,7 +108,7 @@ const ChartTooltip = ({
               <p
                 className={cx(
                   // base
-                  "text-right font-medium whitespace-nowrap tabular-nums",
+                  "whitespace-nowrap text-right font-medium tabular-nums",
                   // text color
                   "text-gray-900 dark:text-gray-50",
                 )}

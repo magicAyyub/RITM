@@ -16,85 +16,65 @@ def get_db():
     prepare_data(conn, get_csv_path())
     return conn
 
-@router.post("/execute-query")
-async def execute_query(query_data: SQLQuery) -> Dict[str, Any]:
-    """
-    Execute a custom SQL query against the prepared data.
-    This endpoint allows you to test and execute SQL queries through the Swagger interface.
-    
-    Example queries:
-    1. Get top operators by volume:
-    ```sql
-    SELECT 
-        lp_csid,
-        COUNT(*) as operations,
-        SUBSTRING(lp_csid, 1, 8) || '...' as operator_short
-    FROM prepared_data
-    GROUP BY lp_csid
-    ORDER BY operations DESC
-    LIMIT 10
-    ```
-    
-    2. Get daily activity:
-    ```sql
-    SELECT 
-        date,
-        COUNT(*) as operations
-    FROM prepared_data
-    GROUP BY date
-    ORDER BY date
-    ```
-    """
+
+@router.get("/operator-dashboard")
+def get_operator_dashboard() -> Dict[str, Any]:
+    """Get comprehensive operator dashboard"""
     try:
         conn = get_db()
-        
-        # Basic query validation
-        query = query_data.query.strip().lower()
-        if not query.startswith('select'):
-            raise HTTPException(
-                status_code=400,
-                detail="Only SELECT queries are allowed for security reasons"
+        result = conn.execute("""
+            WITH operator_summary AS (
+                SELECT 
+                    lp_csid,
+                    COUNT(DISTINCT account_id) as nb_clients_total,
+                    COUNT(DISTINCT ip) as nb_ips_total,
+                    COUNT(*) as nb_connexions_total,
+                    COUNT(DISTINCT country) as nb_pays_total,
+                    MIN(timestamp) as premiere_activite,
+                    MAX(timestamp) as derniere_activite,
+                    MAX(timestamp) - MIN(timestamp) as periode_activite,
+                    COUNT(CASE WHEN timestamp >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as connexions_7j,
+                    COUNT(DISTINCT CASE WHEN timestamp >= CURRENT_DATE - INTERVAL '7 days' THEN account_id END) as clients_7j,
+                    COUNT(*) / GREATEST(EXTRACT(EPOCH FROM (MAX(timestamp) - MIN(timestamp)))/86400, 1) as connexions_par_jour
+                FROM prepared_data 
+                WHERE lp_csid IS NOT NULL 
+                    AND timestamp >= CURRENT_DATE - INTERVAL '90 days'
+                GROUP BY lp_csid
             )
+            SELECT 
+                lp_csid,
+                nb_clients_total,
+                nb_ips_total,
+                nb_connexions_total,
+                nb_pays_total,
+                premiere_activite,
+                derniere_activite,
+                periode_activite,
+                connexions_7j,
+                clients_7j,
+                ROUND(connexions_par_jour, 2) as connexions_moy_par_jour,
+                CASE 
+                    WHEN connexions_7j = 0 THEN 'Inactif'
+                    WHEN connexions_7j < (nb_connexions_total * 0.1) THEN 'Faible activité'
+                    WHEN connexions_7j > (nb_connexions_total * 0.3) THEN 'Forte activité récente'
+                    ELSE 'Activité normale'
+                END as statut_activite,
+                CASE 
+                    WHEN periode_activite < INTERVAL '7 days' THEN 'Nouveau'
+                    WHEN periode_activite > INTERVAL '60 days' THEN 'Établi'
+                    ELSE 'Intermédiaire'
+                END as anciennete
+            FROM operator_summary
+            ORDER BY nb_connexions_total DESC
+        """).fetchdf()
         
-        # Execute query
-        if query_data.params:
-            result = conn.execute(query_data.query, query_data.params).fetchdf()
-        else:
-            result = conn.execute(query_data.query).fetchdf()
-        
-        return {
-            "success": True,
-            "data": result.to_dict('records'),
-            "row_count": len(result),
-            "columns": list(result.columns),
-            "executed_at": datetime.now().isoformat()
-        }
+        return {"operator_dashboard": result.to_dict('records')}
     except Exception as e:
-        error_msg = str(e)
-        if "syntax error" in error_msg.lower():
-            raise HTTPException(
-                status_code=400,
-                detail=f"SQL Syntax Error: {error_msg}"
-            )
-        elif "no such column" in error_msg.lower():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Column Error: {error_msg}"
-            )
-        elif "no such table" in error_msg.lower():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Table Error: {error_msg}"
-            )
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Query Execution Error: {error_msg}"
-            )
-
-@router.get("/top-operators")
-def get_top_operators() -> Dict[str, Any]:
-    """Get top 10 operators by volume with detailed metrics"""
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("/top-operators/{top_x}")
+def get_top_operators(top_x: int = 10) -> Dict[str, Any]:
+    """Get top x operators by volume with detailed metrics"""
     try:
         conn = get_db()
         result = conn.execute("""
@@ -110,16 +90,17 @@ def get_top_operators() -> Dict[str, Any]:
             WHERE lp_csid IS NOT NULL 
             GROUP BY lp_csid
             ORDER BY nb_total_connexions DESC
-            LIMIT 10
-        """).fetchdf()
+            LIMIT ?
+        """, (top_x,)).fetchdf()    
         
         return {"top_operators": result.to_dict('records')}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/monthly-stats")
-def get_monthly_stats() -> Dict[str, Any]:
-    """Get monthly statistics for top operators"""
+@router.get("/monthly-stats/{top_x}")
+def get_monthly_stats(top_x: int = 10) -> Dict[str, Any]:
+    """Get monthly statistics for top x operators.
+    """
     try:
         conn = get_db()
         result = conn.execute("""
@@ -150,9 +131,9 @@ def get_monthly_stats() -> Dict[str, Any]:
                 nb_pays,
                 rank_mois
             FROM ranked_monthly 
-            WHERE rank_mois <= 10
-            ORDER BY mois DESC, rank_mois
-        """).fetchdf()
+            WHERE rank_mois <= ?
+            ORDER BY mois ASC, rank_mois
+        """, (top_x,)).fetchdf()
         
         return {"monthly_stats": result.to_dict('records')}
     except Exception as e:
@@ -164,30 +145,30 @@ def get_weekly_patterns() -> Dict[str, Any]:
     try:
         conn = get_db()
         result = conn.execute("""
-            WITH daily_stats AS (
+            WITH filtered_data AS (
                 SELECT 
                     lp_csid,
-                    EXTRACT(DOW FROM timestamp) as jour_semaine,
-                    strftime('%A', timestamp) as nom_jour,
-                    COUNT(*) as nb_connexions,
-                    COUNT(DISTINCT account_id) as nb_clients_uniques,
-                    COUNT(DISTINCT ip) as nb_ips_uniques
-                FROM prepared_data 
-                WHERE lp_csid IS NOT NULL 
-                    AND timestamp >= CURRENT_DATE - INTERVAL '8 weeks'
-                GROUP BY lp_csid, EXTRACT(DOW FROM timestamp), strftime('%A', timestamp)
+                    EXTRACT(DOW FROM timestamp) AS jour_semaine,
+                    strftime('%A', DATE(timestamp)) AS nom_jour,
+                    DATE(timestamp) AS jour,
+                    COUNT(*) AS nb_connexions,
+                    COUNT(DISTINCT account_id) AS nb_clients_uniques,
+                    COUNT(DISTINCT ip) AS nb_ips_uniques
+                FROM prepared_data
+                WHERE timestamp >= CURRENT_DATE - INTERVAL '8 weeks'
+                  AND lp_csid IS NOT NULL
+                GROUP BY lp_csid, DATE(timestamp), EXTRACT(DOW FROM timestamp)
             )
             SELECT 
+                lp_csid,
                 jour_semaine,
                 nom_jour,
-                SUM(nb_connexions) as total_connexions,
-                SUM(nb_clients_uniques) as total_clients,
-                SUM(nb_ips_uniques) as total_ips,
-                ROUND(AVG(nb_connexions), 2) as moyenne_connexions,
-                ROUND(AVG(nb_clients_uniques), 2) as moyenne_clients
-            FROM daily_stats
-            GROUP BY jour_semaine, nom_jour
-            ORDER BY jour_semaine
+                jour,
+                nb_connexions,
+                nb_clients_uniques,
+                nb_ips_uniques
+            FROM filtered_data
+            ORDER BY jour ASC;
         """).fetchdf()
         
         return {"weekly_patterns": result.to_dict('records')}
@@ -269,6 +250,7 @@ def get_anomalies() -> Dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/activity-gaps")
 def get_activity_gaps() -> Dict[str, Any]:
     """Get detected activity gaps and pauses for operators"""
@@ -328,94 +310,4 @@ def get_activity_gaps() -> Dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/operator-dashboard")
-def get_operator_dashboard() -> Dict[str, Any]:
-    """Get comprehensive operator dashboard"""
-    try:
-        conn = get_db()
-        result = conn.execute("""
-            WITH operator_summary AS (
-                SELECT 
-                    lp_csid,
-                    COUNT(DISTINCT account_id) as nb_clients_total,
-                    COUNT(DISTINCT ip) as nb_ips_total,
-                    COUNT(*) as nb_connexions_total,
-                    COUNT(DISTINCT country) as nb_pays_total,
-                    MIN(timestamp) as premiere_activite,
-                    MAX(timestamp) as derniere_activite,
-                    MAX(timestamp) - MIN(timestamp) as periode_activite,
-                    COUNT(CASE WHEN timestamp >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as connexions_7j,
-                    COUNT(DISTINCT CASE WHEN timestamp >= CURRENT_DATE - INTERVAL '7 days' THEN account_id END) as clients_7j,
-                    COUNT(*) / GREATEST(EXTRACT(EPOCH FROM (MAX(timestamp) - MIN(timestamp)))/86400, 1) as connexions_par_jour
-                FROM prepared_data 
-                WHERE lp_csid IS NOT NULL 
-                    AND timestamp >= CURRENT_DATE - INTERVAL '90 days'
-                GROUP BY lp_csid
-            )
-            SELECT 
-                lp_csid,
-                nb_clients_total,
-                nb_ips_total,
-                nb_connexions_total,
-                nb_pays_total,
-                premiere_activite,
-                derniere_activite,
-                periode_activite,
-                connexions_7j,
-                clients_7j,
-                ROUND(connexions_par_jour, 2) as connexions_moy_par_jour,
-                CASE 
-                    WHEN connexions_7j = 0 THEN 'Inactif'
-                    WHEN connexions_7j < (nb_connexions_total * 0.1) THEN 'Faible activité'
-                    WHEN connexions_7j > (nb_connexions_total * 0.3) THEN 'Forte activité récente'
-                    ELSE 'Activité normale'
-                END as statut_activite,
-                CASE 
-                    WHEN periode_activite < INTERVAL '7 days' THEN 'Nouveau'
-                    WHEN periode_activite > INTERVAL '60 days' THEN 'Établi'
-                    ELSE 'Intermédiaire'
-                END as anciennete
-            FROM operator_summary
-            ORDER BY nb_connexions_total DESC
-        """).fetchdf()
-        
-        return {"operator_dashboard": result.to_dict('records')}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/geographic-analysis")
-def get_geographic_analysis() -> Dict[str, Any]:
-    """Get geographic analysis of top operators"""
-    try:
-        conn = get_db()
-        result = conn.execute("""
-            WITH top_operators AS (
-                SELECT lp_csid
-                FROM prepared_data 
-                WHERE lp_csid IS NOT NULL 
-                    AND timestamp >= CURRENT_DATE - INTERVAL '30 days'
-                GROUP BY lp_csid
-                ORDER BY COUNT(*) DESC
-                LIMIT 10
-            )
-            SELECT 
-                p.lp_csid,
-                p.country,
-                COUNT(DISTINCT p.account_id) as nb_clients_pays,
-                COUNT(DISTINCT p.ip) as nb_ips_pays,
-                COUNT(*) as nb_connexions_pays,
-                ROUND(
-                    100.0 * COUNT(*) / SUM(COUNT(*)) OVER (PARTITION BY p.lp_csid), 
-                    2
-                ) as pourcentage_activite
-            FROM prepared_data p
-            INNER JOIN top_operators t ON p.lp_csid = t.lp_csid
-            WHERE p.timestamp >= CURRENT_DATE - INTERVAL '30 days'
-                AND p.country IS NOT NULL
-            GROUP BY p.lp_csid, p.country
-            ORDER BY p.lp_csid, nb_connexions_pays DESC
-        """).fetchdf()
-        
-        return {"geographic_analysis": result.to_dict('records')}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) 
