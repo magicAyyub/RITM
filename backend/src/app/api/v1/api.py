@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 from src.app.api.v1.endpoints import (
-    insights
+    operators
 )
 
 router = APIRouter()
 
-router.include_router(insights.router, prefix="/insights", tags=["insights"])
+router.include_router(operators.router)

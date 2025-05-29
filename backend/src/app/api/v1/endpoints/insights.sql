@@ -67,6 +67,9 @@ GROUP BY lp_csid
 ORDER BY nb_total_connexions DESC
 LIMIT 10;
 
+-- ================================
+-- Top 10 opérateurs par volume mensuel
+-- ================================
 WITH monthly_stats AS (
     SELECT 
         lp_csid,
