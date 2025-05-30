@@ -41,11 +41,11 @@ class SQLQuery(BaseModel):
 @router.get("/top-operators", response_model=List[OperatorStats])
 def get_top_operators(limit: int = Query(10, ge=1)):
     """
-    Get top N operators by log volume.<br> 
-    This endpoint returns the top N operators based on the number of log events they have generated.<br>
-    Each operator is identified by its `lp_csid`, and the response includes the total count of log events, unique IPs, and unique clients associated with that operator.
+    Récupère les N opérateurs les plus actifs par volume de logs.<br> 
+    Cette fonction retourne les N opérateurs les plus actifs en fonction du nombre d'événements de log qu'ils ont générés.<br>
+    Chaque opérateur est identifié par son `lp_csid`, et la réponse inclut le nombre total d'événements de log, le nombre d'IPs uniques, et le nombre de clients uniques associés à cet opérateur.
 
-    Example response:
+    Exemple de réponse:
     ```json
     [
         {
@@ -63,9 +63,9 @@ def get_top_operators(limit: int = Query(10, ge=1)):
     ]
     ```
 
-    This means that "operator1" has 1000 log events, 500 unique IPs, and 300 unique clients.<br>
-    The `limit` parameter allows you to specify how many top operators to return, with a minimum of 1.
-    The default limit is 10.
+    Cela signifie que "operator1" a 1000 événements de log, 500 IPs uniques, et 300 clients uniques.<br>
+    Le paramètre `limit` permet de spécifier le nombre d'opérateurs à retourner, avec un minimum de 1.<br>
+    La limite par défaut est de 10.
     """
     conn = get_db()
     query = f"""
@@ -91,8 +91,9 @@ def get_temporal_activity(
     specific_date: Optional[date] = None  # Add this parameter
 ):
     """
-    Get activity distribution for a specific operator by time period.
-    It's a breakdown of activity (log events) for a specific operator (lp_csid) across different time periods. Here is an example of response:
+    Récupère la distribution de l'activité pour un opérateur spécifique par période de temps.
+    C'est un découpage de l'activité (événements de log) pour un opérateur spécifique (lp_csid) sur différentes périodes de temps. <br>
+    Voici un exemple de réponse:
     ```json
     [
         {
@@ -112,15 +113,15 @@ def get_temporal_activity(
         }
     ]
     ```
-    This means:
+    Cela signifie:
 
-    - "Hour 0" represents the count of all events from 12:00 AM to 12:59 AM across all dates
-    - "Hour 1" represents the count of all events from 1:00 AM to 1:59 AM across all dates
-    - And so on...
+    - "Hour 0" représente le nombre d'événements de 12:00 AM à 12:59 AM sur toutes les dates
+    - "Hour 1" représente le nombre d'événements de 1:00 AM à 1:59 AM sur toutes les dates
+    - Et ainsi de suite...
 
-    The `granularity` parameter allows you to specify the time period for aggregation: "hour", "day", or "month".<br>
-    The `period` parameter allows you to filter results by a specific month (in 'YYYY-MM' format).<br>
-    If you want to see hourly distribution for a specific date or date range, you can use the `specific_date` parameter. The `specific_date` parameter allows you to filter results by a specific date (in 'YYYY-MM-DD' format).
+    Le paramètre `granularity` permet de spécifier la période de temps pour l'agrégation: "hour", "day", ou "month".<br>
+    Le paramètre `period` permet de filtrer les résultats par un mois spécifique (au format 'YYYY-MM').<br>
+    Si vous voulez voir la distribution horaire pour une date ou une période spécifique, vous pouvez utiliser le paramètre `specific_date`. Le paramètre `specific_date` permet de filtrer les résultats par une date spécifique (au format 'YYYY-MM-DD').
     """
     conn = get_db()
     
@@ -154,12 +155,12 @@ def get_temporal_activity(
 @router.get("/geo-distribution", response_model=List[GeoDistribution])
 def get_geo_distribution(lp_csid: str, limit: int = 5):
     """
-    Get geographic distribution for a specific operator.<br>
-    This endpoint returns the geographic distribution of log events for a specific operator identified by `lp_csid`.<br>
-    The response includes the country, count of log events from that country, and the percentage of total log events that this count represents.<br>
-    The `limit` parameter allows you to specify how many top countries to return, with a default of 5.
+    Récupère la distribution géographique pour un opérateur spécifique.<br>
+    Cette fonction retourne la distribution géographique des événements de log pour un opérateur spécifique identifié par `lp_csid`.<br>
+    La réponse inclut le pays, le nombre d'événements de log de ce pays, et le pourcentage de l'ensemble des événements de log que ce nombre représente.<br>
+    Le paramètre `limit` permet de spécifier le nombre de pays à retourner, avec un minimum de 5.
 
-    Example response:
+    Exemple de réponse:
     ```json
     [
         {
@@ -180,8 +181,8 @@ def get_geo_distribution(lp_csid: str, limit: int = 5):
     ]
     ```
 
-    This means that "US" has 500 log events, which is 50% of the total log events for this operator.<br>
-    The `limit` parameter allows you to specify how many top countries to return, with a default of 5.
+    Cela signifie que "US" a 500 événements de log, ce qui représente 50% de l'ensemble des événements de log pour cet opérateur.<br>
+    Le paramètre `limit` permet de spécifier le nombre de pays à retourner, avec un minimum de 5.
 
     """
     conn = get_db()
@@ -207,11 +208,10 @@ def get_geo_distribution(lp_csid: str, limit: int = 5):
 @router.get("/connection-types", response_model=List[ConnectionTypeStats])
 def get_connection_types(lp_csid: str):
     """
-    Get distribution of connection types (VPN, Proxy, etc) for an operator
-    <br>
-    This endpoint returns the distribution of different connection types (like VPN, Proxy, Tor) used by a specific operator identified by `lp_csid`.<br>
-    The response includes the type of connection, the count of log events for that type, and the percentage of total log events that this count represents.
-    Example response:
+    Récupère la distribution des types de connexion (VPN, Proxy, etc) pour un opérateur spécifique.<br>
+    Cette fonction retourne la distribution des différents types de connexion (comme VPN, Proxy, Tor) utilisés par un opérateur spécifique identifié par `lp_csid`.<br>
+    La réponse inclut le type de connexion, le nombre d'événements de log pour ce type, et le pourcentage de l'ensemble des événements de log que ce nombre représente.<br>
+    Exemple de réponse:
     ```json
     [
         {
@@ -232,8 +232,8 @@ def get_connection_types(lp_csid: str):
     ]
     ```
 
-    This means that "vpn" has 300 log events, which is 30% of the total log events for this operator.<br>
-    The `lp_csid` parameter allows you to specify the operator for which you want to retrieve connection type statistics.
+    Cela signifie que "vpn" a 300 événements de log, ce qui représente 30% de l'ensemble des événements de log pour cet opérateur.<br>
+    Le paramètre `lp_csid` permet de spécifier l'opérateur pour lequel vous souhaitez récupérer les statistiques de type de connexion.
     """
     conn = get_db()
     query = f"""
@@ -276,11 +276,11 @@ def get_inactivity_periods(
     min_gap_days: int = 7
 ):
     """
-    Detect significant inactivity periods for an operator
+    Détecte les périodes d'inactivité significatives pour un opérateur.
     <br>
-    This endpoint identifies periods of inactivity for a specific operator identified by `lp_csid`.
-    It returns a list of inactivity periods where the gap between log events exceeds a specified number of days (`min_gap_days`). <br>
-    Example response:
+    Cette fonction identifie les périodes d'inactivité pour un opérateur spécifique identifié par `lp_csid`.
+    Elle retourne une liste de périodes d'inactivité où l'intervalle entre les événements de log dépasse un nombre de jours spécifié (`min_gap_days`). <br>
+    Exemple de réponse:
     ```json
     [
         {
@@ -296,10 +296,10 @@ def get_inactivity_periods(
     ]
     ```
 
-    This means : 
+    Cela signifie : 
     
-    There was a 7-day inactivity period between "2023-01-01" and "2023-01-08" for this operator.<br>
-    The `min_gap_days` parameter allows you to specify the minimum number of days for a gap to be considered significant, with a default value of 7.
+    Il y a eu une période d'inactivité de 7 jours entre "2023-01-01" et "2023-01-08" pour cet opérateur.<br>
+    Le paramètre `min_gap_days` permet de spécifier le nombre minimal de jours pour que l'intervalle soit considéré comme significatif, avec une valeur par défaut de 7.
     """
     conn = get_db()
     query = f"""
@@ -334,14 +334,13 @@ def detect_operational_anomalies(
     min_activity_spike: float = Query(2.0, description="Pic relatif (>200% par défaut)")
 ):
     """
-    Détecte les anomalies opérationnelles pour un opérateur spécifique.
-    <br>
+    Détecte les anomalies opérationnelles pour un opérateur spécifique.<br>
     Détecte 3 types d'anomalies critiques :
-    1. **Chutes brutales d'activité** (possible désactivation de comptes compromis)
-    2. **Pics d'activité** (possible attaque DDoS ou campagne de phishing)
-    3. **Changement de localisation** (possible takeover de compte)
+    1. **Chutes brutales d'activité** (possible désactivation de comptes compromis)<br>
+    2. **Pics d'activité** (possible attaque DDoS ou campagne de phishing)<br>
+    3. **Changement de localisation** (possible takeover de compte)<br>
     
-    Exemple de retour :
+    Exemple de retour :<br>
     ```json
     {
         "operator": "OP123",
@@ -608,7 +607,13 @@ def benchmark_operators(
 @router.post("/custom-query")
 def execute_custom_query(sql_query: SQLQuery):
     """
-    Execute a custom SQL query (for advanced analysis)
+    Exécute une requête SQL personnalisée (pour une analyse avancée).
+    <br>
+    Cette fonction permet d'exécuter une requête SQL personnalisée pour une analyse avancée.
+    Elle retourne un dictionnaire contenant le résultat de la requête.
+    Exemple de retour :
+    ```json
+    {"success": true, "result": [{"column1": "value1", "column2": "value2"}]}
     """
     conn = get_db()
     try:
