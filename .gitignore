@@ -3,3 +3,4 @@ prompt.txt
 backend/data/joined_df2.csv
 __pycache__/
 *.pyc
+*.DS_Store
