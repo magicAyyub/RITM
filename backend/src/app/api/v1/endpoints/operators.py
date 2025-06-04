@@ -153,8 +153,8 @@ def get_top_operators(limit: int = Query(10, ge=1)):
 
 @router.get("/inactivity-periods")
 def get_inactivity_periods(
-    lp_csid: str,
-    min_gap_days: int = 7
+    lp_csid: str = Query(..., description="LP CSID de l'opérateur"),
+    min_gap_days: int = Query(7, ge=1, description="Nombre minimal de jours pour considérer un intervalle comme significatif")
 ):
     """
     Détecte les périodes d'inactivité significatives pour un opérateur.
@@ -188,3 +188,59 @@ def get_inactivity_periods(
         {query_str}
     """, (lp_csid, min_gap_days)).fetchdf()
     return df.to_dict(orient='records')
+
+@router.get("/geo-distributions")
+def get_geo_distribution():
+    """voir si les connexions d’opérateurs proviennent de plusieurs régions/pays/IP → sécurité, mobilité
+    """
+    conn = get_db()
+    query_str = sql_from_file("geo-distributions.sql")
+    df = conn.execute(f"""
+        {query_str}
+    """).fetchdf()
+    if df.empty:
+        return {"geo_distribution": []}
+    return df.to_dict(orient='records')
+
+
+# détecter des comportements suspects ou changements techniques
+
+@router.get("/anomalies/ip-asn-changes")
+def get_ip_asn_changes():
+    """
+    Détecte les changements d'ASN pour un opérateur spécifique.
+    <br>
+    Cette fonction identifie les changements d'ASN pour un opérateur spécifique identifié par `lp_csid`.
+    Elle retourne une liste de changements d'ASN détectés au cours des 8 dernières semaines.
+    """
+    conn = get_db()
+    query_str = sql_from_file("ip-asn-changes.sql")
+    df = conn.execute(f"""
+        {query_str}
+    """).fetchdf()
+    return df.to_dict(orient='records')
+
+@router.post("/execute-query")
+def execute_query(query: SQLQuery =Query(...)):
+    """
+    Exécute une requête SQL personnalisée.
+    <br>
+    Cette fonction permet d'exécuter une requête SQL fournie par l'utilisateur. 
+    La requête doit être une chaîne de caractères valide, et les paramètres peuvent être passés sous forme de dictionnaire.
+    
+    Exemple de requête :
+    ```json
+    {
+        "query": "SELECT * FROM operators WHERE lp_csid = :lp_csid",
+        "params": {"lp_csid": "operator1"}
+    }
+    ```
+
+    La réponse sera le résultat de la requête exécutée.
+    """
+    conn = get_db()
+    try:
+        result = conn.execute(query.query, query.params or {}).fetchdf()
+        return result.to_dict(orient='records')
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

@@ -1,22 +1,41 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { AreaChart } from "@/components/ui/AreaChart"
+import { AreaChart} from "@/components/ui/AreaChart"
 import { BarChart } from "@/components/ui/BarChart"
-import { Card } from "@/components/ui/Card"
-import { Title } from "@/components/ui/Title"
+import { DonutChart } from "@/components/ui/DonutChart"
+import { Tracker } from "@/components/ui/Tracker"
 import { Metric } from "@/components/ui/Metric"
 import { Text } from "@/components/ui/Text"
-import { Tracker } from "@/components/ui/Tracker"
+import { Title } from "@/components/ui/Title"
+import { Card } from "@/components/Card"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/Tabs"
 import { OperatorId } from "@/components/ui/OperatorId"
-import { fetchFromAPI } from "./api/insights/route"
+// tabs go here
+import { fetchFromAPI } from "./api/operators/route"
 
 interface OperatorData {
   lp_csid: string
-  nb_clients_total: number
   nb_connexions_total: number
-  nb_pays_total: number
+  premiere_activite: string
+  derniere_activite: string
   statut_activite: string
+  anciennete: string
+}
+
+interface MonthlyStat {
+  mois: string
+  lp_csid: string
+  nb_connexions: number
+  rank_mois: number
+}
+
+interface WeeklyPattern {
+  lp_csid: string
+  jour_semaine: number
+  nom_jour: string
+  jour: string
+  nb_connexions: number
 }
 
 interface ActivityGap {
@@ -27,92 +46,156 @@ interface ActivityGap {
   detail_pauses: string
 }
 
-interface WeeklyPattern {
+interface TopOperator {
   lp_csid: string
-  jour_semaine: number
-  nom_jour: string
-  jour: string
+  count: number
+  unique_ips: number
+  unique_clients: number
+}
+
+interface GeoDistribution {
+  lp_csid: string
+  country: string
   nb_connexions: number
-  nb_clients_uniques: number
-  nb_ips_uniques: number
 }
 
 interface Anomaly {
   lp_csid: string
   date: string
   nb_connexions: number
-  nb_clients: number
-  type_anomalie: string
-  variation_pourcentage: number
   moyenne_connexions: number
+  variation_pourcentage: number
+  type_anomalie: string
 }
 
-export default function Home() {
+export default function Dashboard() {
   const [data, setData] = useState<{
-    monthly_stats: any[]
+    operator_dashboard: OperatorData[]
+    monthly_stats: MonthlyStat[]
     weekly_patterns: WeeklyPattern[]
     activity_gaps: ActivityGap[]
-    operator_dashboard: OperatorData[]
+    top_operators: TopOperator[]
+    geo_distributions: GeoDistribution[]
     anomalies: Anomaly[]
   }>({
+    operator_dashboard: [],
     monthly_stats: [],
     weekly_patterns: [],
     activity_gaps: [],
-    operator_dashboard: [],
+    top_operators: [],
+    geo_distributions: [],
     anomalies: []
   })
 
-  const [showAllGaps, setShowAllGaps] = useState(false);
-  const [showAllAnomalies, setShowAllAnomalies] = useState(false);
-  const [topOperators, setTopOperators] = useState(10);
+  const [loading, setLoading] = useState(true)
+  const [timeRange, setTimeRange] = useState<'7j' | '30j' | '90j'>('30j')
+  const [topLimit, setTopLimit] = useState(10)
+  const [showAllGaps, setShowAllGaps] = useState(false)
+  const [showAllAnomalies, setShowAllAnomalies] = useState(false)
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [monthlyStats, weeklyPatterns, activityGaps, operatorDashboard, anomalies] = await Promise.all([
-          fetchFromAPI(`/monthly-stats/${topOperators}`),
+        setLoading(true)
+        
+        const [
+          operatorDashboard,
+          monthlyStats,
+          weeklyPatterns,
+          activityGaps,
+          topOperators,
+          geoDistributions,
+          anomalies
+        ] = await Promise.all([
+          fetchFromAPI('/operator-dashboard'),
+          fetchFromAPI(`/monthly-stats?top_x=${topLimit}`),
           fetchFromAPI('/weekly-patterns'),
           fetchFromAPI('/activity-gaps'),
-          fetchFromAPI('/operator-dashboard'),
+          fetchFromAPI(`/top-operators?limit=${topLimit}`),
+          fetchFromAPI('/geo-distributions'),
           fetchFromAPI('/anomalies')
         ])
 
         setData({
+          operator_dashboard: operatorDashboard.operator_dashboard || [],
           monthly_stats: monthlyStats.monthly_stats || [],
           weekly_patterns: weeklyPatterns.weekly_patterns || [],
           activity_gaps: activityGaps.activity_gaps || [],
-          operator_dashboard: operatorDashboard.operator_dashboard || [],
+          top_operators: topOperators || [],
+          geo_distributions: geoDistributions || [],
           anomalies: anomalies.anomalies || []
         })
       } catch (error) {
-        console.error('Erreur lors de la récupération des données:', error)
+        console.error('Error fetching data:', error)
+      } finally {
+        setLoading(false)
       }
     }
 
     fetchData()
-  }, [topOperators])
+  }, [topLimit, timeRange, showAllGaps, showAllAnomalies])
 
-  // Calculate KPIs
+  // Calcul des KPI
   const totalOperators = data.operator_dashboard.length
-  const totalClients = data.operator_dashboard.reduce((acc, op) => acc + op.nb_clients_total, 0)
   const totalConnections = data.operator_dashboard.reduce((acc, op) => acc + op.nb_connexions_total, 0)
-  const totalCountries = data.operator_dashboard.reduce((acc, op) => acc + op.nb_pays_total, 0)
+  const avgConnectionsPerOperator = totalOperators > 0 ? Math.round(totalConnections / totalOperators) : 0
 
-  // Prepare weekly activity data
-  const weeklyPatternsWithFormattedDate = data.weekly_patterns.map(item => ({
-    ...item,
-    jour_formate: item.jour
-      ? new Date(item.jour).toLocaleString('fr-FR', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric'
-        })
-      : ''
-  }));
-  // Prepare activity gaps data for Tracker
+  // Préparation des données pour les graphiques
+  const topOperatorsData = data.top_operators.map(op => ({
+    name: op.lp_csid.substring(0, 8) + '...',
+    value: op.count,
+    uniqueIps: op.unique_ips,
+    uniqueClients: op.unique_clients
+  }))
+
+  const monthlyActivityData = data.monthly_stats.reduce((acc: any[], stat) => {
+    const month = new Date(stat.mois).toLocaleDateString('fr-FR', { month: 'short' })
+    const existing = acc.find(item => item.mois === month)
+    
+    if (existing) {
+      existing.nb_connexions += stat.nb_connexions
+    } else {
+      acc.push({
+        mois: month,
+        nb_connexions: stat.nb_connexions,
+        rank: stat.rank_mois
+      })
+    }
+    return acc
+  }, []).sort((a, b) => new Date(a.mois).getTime() - new Date(b.mois).getTime())
+
+  const weeklyPatternsByDay = data.weekly_patterns.reduce((acc: any[], pattern) => {
+    const day = pattern.nom_jour
+    const existing = acc.find(item => item.jour === day)
+    
+    if (existing) {
+      existing.nb_connexions += pattern.nb_connexions
+    } else {
+      acc.push({
+        jour: day,
+        nb_connexions: pattern.nb_connexions,
+        jour_semaine: pattern.jour_semaine
+      })
+    }
+    return acc
+  }, []).sort((a, b) => a.jour_semaine - b.jour_semaine)
+
+  const geoDistributionData = data.geo_distributions.reduce((acc: any[], geo) => {
+    const existing = acc.find(item => item.country === geo.country)
+    
+    if (existing) {
+      existing.value += geo.nb_connexions
+    } else {
+      acc.push({
+        country: geo.country,
+        value: geo.nb_connexions
+      })
+    }
+    return acc
+  }, [])
+
   const getGapTrackerData = (operator: ActivityGap) => {
-    const gaps = operator.detail_pauses.split('; ')
-    return gaps.map((gap: string, index: number) => {
+    return operator.detail_pauses.split('; ').map((gap, index) => {
       const [dates, duration] = gap.split(' (')
       const days = parseInt(duration)
       return {
@@ -123,124 +206,204 @@ export default function Home() {
     })
   }
 
-  // Prepare monthly activity data
-  const monthlyActivityData = data.monthly_stats.reduce((acc: any[], stat: any) => {
-    const month = new Date(stat.mois).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })
-    const existingMonth = acc.find(m => m.mois === month)
-    if (existingMonth) {
-      existingMonth.connexions += stat.nb_connexions
-    } else {
-      acc.push({
-        mois: month,
-        connexions: stat.nb_connexions
-      })
-    }
-    return acc
-  }, [])
-
-  const displayedGaps = showAllGaps ? data.activity_gaps : data.activity_gaps.slice(0, 5);
+  const displayedGaps = showAllGaps ? data.activity_gaps : data.activity_gaps.slice(0, 5)
 
   return (
-    <div className="p-4 space-y-6">
-      {/* En-tête avec métriques clés */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="p-6 space-y-6">
+      {/* Header avec KPI */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
-          <Title>Total Opérateurs</Title>
+          <Title>Opérateurs</Title>
           <Metric>{totalOperators}</Metric>
-          <Text>Actifs dans le système</Text>
+          <Text>Total enregistrés</Text>
         </Card>
         <Card>
-          <Title>Clients Uniques</Title>
-          <Metric>{totalClients.toLocaleString()}</Metric>
-          <Text>Sur tous les opérateurs</Text>
-        </Card>
-        <Card>
-          <Title>Total Connexions</Title>
+          <Title>Connexions</Title>
           <Metric>{totalConnections.toLocaleString()}</Metric>
-          <Text>Activité totale du système</Text>
+          <Text>Total historique (hors domaine docaposte.com)</Text>
         </Card>
         <Card>
-          <Title>Pays Actifs</Title>
-          <Metric>{totalCountries}</Metric>
-          <Text>Couverture géographique</Text>
+          <Title>Moyenne/Opérateur</Title>
+          <Metric>{avgConnectionsPerOperator.toLocaleString()}</Metric>
+          <Text>Connexions moyennes</Text>
         </Card>
       </div>
 
-      {/* Évolution mensuelle de l'activité */}
+      {/* Section Top Opérateurs */}
       <Card>
-        <Title>Évolution Mensuelle de l'Activité</Title>
-        <Text className="text-sm text-gray-500 mb-4">
-          Visualisation des tendances d'activité des {topOperators} opérateurs les plus actifs sur les 12 derniers mois. Les pics peuvent indiquer des anomalies ou des périodes d'activité intense.
-        </Text>
-        <select
-              id="topOperators"
-              value={topOperators}
-              onChange={(e) => setTopOperators(Number(e.target.value))}
-              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {[5, 10, 15, 20].map((num) => (
-                <option key={num} value={num}>
-                  {num}
-                </option>
+        <div className="flex justify-between items-center mb-4">
+          <Title>Top Opérateurs</Title>
+          <select
+            value={topLimit}
+            onChange={(e) => setTopLimit(Number(e.target.value))}
+            className="rounded-md border border-gray-300 px-3 py-1 text-sm"
+          >
+            {[5, 10, 15, 20].map(num => (
+              <option key={num} value={num}>Top {num}</option>
+            ))}
+          </select>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
+          <div className="lg:col-span-2">
+            <BarChart
+              data={topOperatorsData}
+              index="name"
+              categories={["value"]}
+              colors={["blue"]}
+              valueFormatter={(value) => value.toLocaleString()}
+              yAxisWidth={80}
+              showLegend={false}
+              className="h-80"
+            />
+          </div>
+          <div className="flex flex-col items-center">
+            <DonutChart
+              data={topOperatorsData}
+              category="name"
+              value="value"
+              valueFormatter={(value) => value.toLocaleString()}
+              colors={["blue", "cyan", "lime", "violet", "fuchsia"]}
+              className="w-56 h-56"
+            />
+            <div className="mt-4 flex flex-col gap-1">
+              {topOperatorsData.map((op, i) => (
+                <div key={op.name} className="flex items-center gap-2 text-sm">
+                  <span
+                    className="inline-block w-3 h-3 rounded-full"
+                    style={{ backgroundColor: ["#3b82f6", "#06b6d4", "#84cc16", "#a21caf", "#d946ef"][i % 5] }}
+                  />
+                  <span>{op.name}</span>
+                </div>
               ))}
-            </select>
-        <AreaChart
-          className="h-72 mt-4"
-          data={monthlyActivityData}
-          index="mois"
-          categories={["connexions"]}
-          colors={["blue"]}
-          valueFormatter={(number: number) => number.toLocaleString()}
-          showLegend={true}
-          showGridLines={true}
-        />
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Analyse Temporelle */}
+      <Card>
+        <Tabs defaultValue="mensuelle">
+          <TabsList>
+            <TabsTrigger value="mensuelle">Mensuelle</TabsTrigger>
+            <TabsTrigger value="hebdomadaire">Hebdomadaire</TabsTrigger>
+          </TabsList>
+          <TabsContent value="mensuelle">
+            <AreaChart
+              data={monthlyActivityData}
+              index="mois"
+              categories={["nb_connexions"]}
+              colors={["blue"]}
+              valueFormatter={(value) => value.toLocaleString()}
+              showLegend={false}
+              className="h-80 mt-4"
+            />
+          </TabsContent>
+          <TabsContent value="hebdomadaire">
+            <BarChart
+              data={weeklyPatternsByDay}
+              index="jour"
+              categories={["nb_connexions"]}
+              colors={["emerald"]}
+              valueFormatter={(value) => value.toLocaleString()}
+              showLegend={false}
+              className="h-80 mt-4"
+            />
+          </TabsContent>
+        </Tabs>
       </Card>
 
       <Card>
-        <Title>Activité Hebdomadaire</Title>
-        <Text>Visualisation de l'activité hebdomadaire des opérateurs sur les 8 dernières semaines.</Text>
+        <Title>Activité Hebdomadaire détaillée</Title>
+        <Text className="text-sm text-gray-500 mb-4">
+          Détail de l'activité par jour, avec connexions, clients uniques et IPs uniques. (Sur 8 semaines)
+        </Text>
         <AreaChart
           className="mt-6 h-80"
-          data={weeklyPatternsWithFormattedDate}
+          data={data.weekly_patterns.map(item => ({
+            ...item,
+            jour_formate: item.jour
+              ? new Date(item.jour).toLocaleDateString('fr-FR', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric'
+                })
+              : ''
+          }))}
           index="jour_formate"
-          categories={['nb_connexions', 'nb_ips_uniques', 'nom_jour']}
-          colors={['emerald']}
+          categories={['nb_connexions', 'nb_clients_uniques', 'nb_ips_uniques']}
+          colors={['blue', 'emerald', 'violet']}
           showLegend={true}
           showYAxis
           showXAxis
           valueFormatter={(number: number) => number.toLocaleString()}
           yAxisWidth={50}
         />
-    </Card>
+      </Card>
 
-      {/* Analyse des Pauses d'Activité */}
+      {/* Analyse Géographique */}
       <Card>
-        <Title>Analyse des Pauses d'Activité</Title>
-        <Text className="text-sm text-gray-500 mb-4">
-          Visualisation des périodes d&apos;inactivité des opérateurs. Rouge = pause longue (&gt;7 jours), Jaune = pause moyenne (3-7 jours), Vert = pause courte (&lt;3 jours).
+        <Title>Répartition Géographique</Title>
+        <div className="flex items-start gap-8">
+          <DonutChart
+            data={geoDistributionData}
+            category="country"
+            value="value"
+            valueFormatter={(value) => value.toLocaleString()}
+            colors={["blue", "cyan", "lime", "violet", "fuchsia","amber", "pink"]}
+            className="w-56 h-56"
+          />
+          <div className="flex-1">
+            <div className="max-h-72 overflow-y-auto w-48">
+              {geoDistributionData.map((geo, i) => (
+                <div
+                  key={geo.country}
+                  className={`flex items-center gap-2 text-sm px-2 py-1 ${i % 2 === 0 ? 'bg-gray-50' : ''}`}
+                >
+                  <span
+                    className="inline-block w-3 h-3 rounded-full"
+                    style={{ backgroundColor: ["#3b82f6", "#06b6d4", "#84cc16", "#a21caf", "#d946ef"][i % 5] }}
+                  />
+                  <span className="font-mono">{geo.country}</span>
+                  <span className="ml-auto text-xs text-gray-500">{geo.value.toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Analyse des Pauses */}
+      <Card>
+        <Title>Pauses d&apos;Activité</Title>
+        <Text className="mb-4">
+          Visualisation des périodes d&apos;inactivité des opérateurs. 
+          <span className="inline-flex items-center ml-2">
+            <span className="w-3 h-3 bg-red-500 rounded-full mr-1"></span> Longue
+            <span className="w-3 h-3 bg-yellow-500 rounded-full mx-2"></span> Moyenne
+            <span className="w-3 h-3 bg-green-500 rounded-full ml-1"></span> Courte
+          </span>
         </Text>
-        <div className="space-y-4 mt-4 max-h-[600px] overflow-y-auto pr-2">
-          {displayedGaps.map((operator: ActivityGap, index: number) => (
-            <div key={index} className="space-y-2">
+        
+        <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+          {displayedGaps.map((operator, index) => (
+            <div key={index} className="space-y-2 border-b pb-4 last:border-b-0">
               <div className="flex justify-between items-center">
                 <OperatorId id={operator.lp_csid} className="font-medium" />
+                <Text>{operator.nb_pauses_detectees} pauses détectées</Text>
               </div>
-              <Tracker
-                data={getGapTrackerData(operator)}
-                hoverEffect={true}
-              />
+              <Tracker data={getGapTrackerData(operator)} />
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div>
-                  <Text>Pause Moyenne</Text>
-                  <Metric className="text-lg">{operator.duree_moyenne_pause.toFixed(1)} jours</Metric>
+                  <Text>Moyenne</Text>
+                  <Metric className="text-sm">{operator.duree_moyenne_pause.toFixed(1)} jours</Metric>
                 </div>
                 <div>
-                  <Text>Plus Longue Pause</Text>
-                  <Metric className="text-lg">{operator.plus_longue_pause} jours</Metric>
+                  <Text>Plus longue</Text>
+                  <Metric className="text-sm">{operator.plus_longue_pause} jours</Metric>
                 </div>
                 <div>
-                  <Text>Total Pauses</Text>
-                  <Metric className="text-lg">{operator.nb_pauses_detectees}</Metric>
+                  <Text>Total</Text>
+                  <Metric className="text-sm">{operator.nb_pauses_detectees}</Metric>
                 </div>
               </div>
             </div>
@@ -265,7 +428,7 @@ export default function Home() {
           Détection des pics et chutes d&apos;activité significatifs (plus de 2 écarts-types par rapport à la moyenne).
         </Text>
         <div className="space-y-4 mt-4 max-h-[600px] overflow-y-auto pr-2">
-          {(showAllAnomalies ? data.anomalies : data.anomalies.slice(0, 5)).map((anomaly: Anomaly, index: number) => (
+          {(showAllAnomalies ? data.anomalies : data.anomalies.slice(0, 5)).map((anomaly, index) => (
             <div key={index} className="border-b pb-4 last:border-b-0">
               <div className="flex justify-between items-start mb-2">
                 <div>
@@ -307,7 +470,7 @@ export default function Home() {
                 </div>
               </div>
             </div>
-          ))}
+          ))} 
         </div>
         {data.anomalies.length > 5 && (
           <div className="flex justify-center mt-4">
@@ -317,6 +480,12 @@ export default function Home() {
             >
               {showAllAnomalies ? "Voir moins" : "Voir plus"}
             </button>
+          </div>
+        )}
+
+        {data.anomalies.length === 0 && (
+          <div className="text-center text-gray-500 mt-4">
+            <Text>Aucune anomalie détectée pour le moment.</Text>
           </div>
         )}
       </Card>

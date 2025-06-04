@@ -14,7 +14,7 @@ export function OperatorId({ id, className }: OperatorIdProps) {
   return (
     <div className={cn("flex items-center gap-2", className)}>
       <span className="font-mono text-sm">
-        Opérateur : {isExpanded ? id : shortId}
+        {isExpanded ? id : shortId}
       </span>
       <button
         onClick={() => setIsExpanded(!isExpanded)}

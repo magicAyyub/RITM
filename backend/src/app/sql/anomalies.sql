@@ -32,18 +32,18 @@ anomalies AS (
         o.ecart_type_connexions,
         o.moyenne_clients,
         o.ecart_type_clients,
-        CASE 
-            WHEN d.nb_connexions > (o.moyenne_connexions + 2 * o.ecart_type_connexions) THEN 'Pic d''activité'
-            WHEN d.nb_connexions < (o.moyenne_connexions - 2 * o.ecart_type_connexions) THEN 'Chute d''activité'
-            ELSE 'Normal'
-        END as type_anomalie,
-        CASE 
-            WHEN d.nb_connexions > (o.moyenne_connexions + 2 * o.ecart_type_connexions) THEN 
-                ROUND(100.0 * (d.nb_connexions - o.moyenne_connexions) / o.moyenne_connexions, 2)
-            WHEN d.nb_connexions < (o.moyenne_connexions - 2 * o.ecart_type_connexions) THEN 
-                ROUND(100.0 * (o.moyenne_connexions - d.nb_connexions) / o.moyenne_connexions, 2)
-            ELSE 0
-        END as variation_pourcentage
+    CASE 
+        WHEN d.nb_connexions > (o.moyenne_connexions + 1.5 * o.ecart_type_connexions) THEN 'Pic d''activité'
+        WHEN d.nb_connexions < (o.moyenne_connexions - 1.5 * o.ecart_type_connexions) THEN 'Chute d''activité'
+        ELSE 'Normal'
+    END as type_anomalie,
+    CASE 
+        WHEN d.nb_connexions > (o.moyenne_connexions * 1.25) THEN 
+            ROUND(100.0 * (d.nb_connexions - o.moyenne_connexions) / o.moyenne_connexions, 2)
+        WHEN d.nb_connexions < (o.moyenne_connexions * 0.75) THEN 
+            ROUND(100.0 * (o.moyenne_connexions - d.nb_connexions) / o.moyenne_connexions, 2)
+        ELSE 0
+    END as variation_pourcentage
     FROM daily_stats d
     JOIN operator_stats o ON d.lp_csid = o.lp_csid
     WHERE d.nb_connexions > (o.moyenne_connexions + 2 * o.ecart_type_connexions)
