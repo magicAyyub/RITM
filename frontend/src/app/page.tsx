@@ -337,18 +337,9 @@ export default function Dashboard() {
             />
           </TabsContent>
           <TabsContent value="hebdomadaire">
-            <AreaChart
-              data={data.weekly_patterns.map(item => ({
-                ...item,
-                jour_formate: item.jour
-                  ? new Date(item.jour).toLocaleDateString('fr-FR', {
-                      day: '2-digit',
-                      month: '2-digit',
-                      year: 'numeric'
-                    })
-                  : ''
-              }))}
-              index="jour_formate"
+            <BarChart
+              data={weeklyPatternsByDay}
+              index="jour"
               categories={["nb_connexions"]}
               colors={["emerald"]}
               valueFormatter={(value) => value.toLocaleString()}
