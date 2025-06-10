@@ -13,6 +13,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/Tabs"
 import { OperatorId } from "@/components/ui/OperatorId"
 // tabs go here
 import { fetchFromAPI } from "./api/operators/route"
+import { ExportButton } from "@/components/ui/ExportButton"
+import { downloadCSV } from "@/lib/exportUtils"
 
 interface OperatorData {
   lp_csid: string
@@ -36,6 +38,8 @@ interface WeeklyPattern {
   nom_jour: string
   jour: string
   nb_connexions: number
+  nb_clients_uniques: number
+  nb_ips_uniques: number
 }
 
 interface ActivityGap {
@@ -148,8 +152,9 @@ export default function Dashboard() {
     uniqueClients: op.unique_clients
   }))
 
+  // Agrégation des données mensuelles par mois uniquement
   const monthlyActivityData = data.monthly_stats.reduce((acc: any[], stat) => {
-    const month = new Date(stat.mois).toLocaleDateString('fr-FR', { month: 'short' })
+    const month = new Date(stat.mois).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })
     const existing = acc.find(item => item.mois === month)
     
     if (existing) {
@@ -157,29 +162,34 @@ export default function Dashboard() {
     } else {
       acc.push({
         mois: month,
-        nb_connexions: stat.nb_connexions,
-        rank: stat.rank_mois
+        nb_connexions: stat.nb_connexions
       })
     }
     return acc
   }, []).sort((a, b) => new Date(a.mois).getTime() - new Date(b.mois).getTime())
 
+  // Agrégation des données hebdomadaires par jour uniquement
   const weeklyPatternsByDay = data.weekly_patterns.reduce((acc: any[], pattern) => {
     const day = pattern.nom_jour
     const existing = acc.find(item => item.jour === day)
     
     if (existing) {
       existing.nb_connexions += pattern.nb_connexions
+      existing.nb_clients_uniques += pattern.nb_clients_uniques
+      existing.nb_ips_uniques += pattern.nb_ips_uniques
     } else {
       acc.push({
         jour: day,
         nb_connexions: pattern.nb_connexions,
+        nb_clients_uniques: pattern.nb_clients_uniques,
+        nb_ips_uniques: pattern.nb_ips_uniques,
         jour_semaine: pattern.jour_semaine
       })
     }
     return acc
   }, []).sort((a, b) => a.jour_semaine - b.jour_semaine)
 
+  // Agrégation des données géographiques par pays uniquement
   const geoDistributionData = data.geo_distributions.reduce((acc: any[], geo) => {
     const existing = acc.find(item => item.country === geo.country)
     
@@ -192,7 +202,30 @@ export default function Dashboard() {
       })
     }
     return acc
-  }, [])
+  }, []).sort((a, b) => b.value - a.value) // Tri par nombre de connexions décroissant
+
+  // Agrégation des anomalies par date et type
+  const aggregatedAnomalies = data.anomalies.reduce((acc: any[], anomaly) => {
+    const date = new Date(anomaly.date).toLocaleDateString('fr-FR')
+    const existing = acc.find(item => item.date === date && item.type_anomalie === anomaly.type_anomalie)
+    
+    if (existing) {
+      existing.nb_connexions += anomaly.nb_connexions
+      existing.moyenne_connexions = (existing.moyenne_connexions + anomaly.moyenne_connexions) / 2
+      existing.variation_pourcentage = (existing.variation_pourcentage + anomaly.variation_pourcentage) / 2
+      existing.operateurs = [...existing.operateurs, anomaly.lp_csid]
+    } else {
+      acc.push({
+        date,
+        type_anomalie: anomaly.type_anomalie,
+        nb_connexions: anomaly.nb_connexions,
+        moyenne_connexions: anomaly.moyenne_connexions,
+        variation_pourcentage: anomaly.variation_pourcentage,
+        operateurs: [anomaly.lp_csid]
+      })
+    }
+    return acc
+  }, []).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
   const getGapTrackerData = (operator: ActivityGap) => {
     return operator.detail_pauses.split('; ').map((gap, index) => {
@@ -207,6 +240,7 @@ export default function Dashboard() {
   }
 
   const displayedGaps = showAllGaps ? data.activity_gaps : data.activity_gaps.slice(0, 5)
+  const displayedAnomalies = showAllAnomalies ? aggregatedAnomalies : aggregatedAnomalies.slice(0, 5)
 
   return (
     <div className="p-6 space-y-6">
@@ -233,18 +267,31 @@ export default function Dashboard() {
       <Card>
         <div className="flex justify-between items-center mb-4">
           <Title>Top Opérateurs</Title>
-          <select
-            value={topLimit}
-            onChange={(e) => setTopLimit(Number(e.target.value))}
-            className="rounded-md border border-gray-300 px-3 py-1 text-sm"
-          >
-            {[5, 10, 15, 20].map(num => (
-              <option key={num} value={num}>Top {num}</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              value={topLimit}
+              onChange={(e) => setTopLimit(Number(e.target.value))}
+              className="rounded-md border border-gray-300 px-3 py-1 text-sm"
+            >
+              {[5, 10, 15, 20].map(num => (
+                <option key={num} value={num}>Top {num}</option>
+              ))}
+            </select>
+            <ExportButton 
+              onClick={() => downloadCSV(
+                data.top_operators.map(op => ({
+                  'ID Opérateur': op.lp_csid,
+                  'Nombre de connexions': op.count,
+                  'IPs uniques': op.unique_ips,
+                  'Clients uniques': op.unique_clients
+                })),
+                'top-operateurs'
+              )} 
+            />
+          </div>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
-          <div className="lg:col-span-2">
+        <div className="grid grid-cols-1 gap-6 items-center">
+          <div className="lg:col-span-1">
             <BarChart
               data={topOperatorsData}
               index="name"
@@ -256,32 +303,23 @@ export default function Dashboard() {
               className="h-80"
             />
           </div>
-          <div className="flex flex-col items-center">
-            <DonutChart
-              data={topOperatorsData}
-              category="name"
-              value="value"
-              valueFormatter={(value) => value.toLocaleString()}
-              colors={["blue", "cyan", "lime", "violet", "fuchsia"]}
-              className="w-56 h-56"
-            />
-            <div className="mt-4 flex flex-col gap-1">
-              {topOperatorsData.map((op, i) => (
-                <div key={op.name} className="flex items-center gap-2 text-sm">
-                  <span
-                    className="inline-block w-3 h-3 rounded-full"
-                    style={{ backgroundColor: ["#3b82f6", "#06b6d4", "#84cc16", "#a21caf", "#d946ef"][i % 5] }}
-                  />
-                  <span>{op.name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       </Card>
 
       {/* Analyse Temporelle */}
       <Card>
+        <div className="flex justify-between items-center mb-4">
+          <Title>Analyse Temporelle</Title>
+          <ExportButton 
+            onClick={() => downloadCSV(
+              monthlyActivityData.map(stat => ({
+                'Mois': stat.mois,
+                'Nombre de connexions': stat.nb_connexions
+              })),
+              'activite-mensuelle'
+            )} 
+          />
+        </div>
         <Tabs defaultValue="mensuelle">
           <TabsList>
             <TabsTrigger value="mensuelle">Mensuelle</TabsTrigger>
@@ -299,9 +337,18 @@ export default function Dashboard() {
             />
           </TabsContent>
           <TabsContent value="hebdomadaire">
-            <BarChart
-              data={weeklyPatternsByDay}
-              index="jour"
+            <AreaChart
+              data={data.weekly_patterns.map(item => ({
+                ...item,
+                jour_formate: item.jour
+                  ? new Date(item.jour).toLocaleDateString('fr-FR', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric'
+                    })
+                  : ''
+              }))}
+              index="jour_formate"
               categories={["nb_connexions"]}
               colors={["emerald"]}
               valueFormatter={(value) => value.toLocaleString()}
@@ -313,7 +360,22 @@ export default function Dashboard() {
       </Card>
 
       <Card>
-        <Title>Activité Hebdomadaire détaillée</Title>
+        <div className="flex justify-between items-center mb-4">
+          <Title>Activité Hebdomadaire détaillée</Title>
+          <ExportButton 
+            onClick={() => downloadCSV(
+              data.weekly_patterns.map(pattern => ({
+                'Date': new Date(pattern.jour).toLocaleDateString('fr-FR'),
+                'Jour': pattern.nom_jour,
+                'ID Opérateur': pattern.lp_csid,
+                'Nombre de connexions': pattern.nb_connexions,
+                'Clients uniques': pattern.nb_clients_uniques,
+                'IPs uniques': pattern.nb_ips_uniques
+              })),
+              'activite-hebdomadaire'
+            )} 
+          />
+        </div>
         <Text className="text-sm text-gray-500 mb-4">
           Détail de l'activité par jour, avec connexions, clients uniques et IPs uniques. (Sur 8 semaines)
         </Text>
@@ -342,7 +404,18 @@ export default function Dashboard() {
 
       {/* Analyse Géographique */}
       <Card>
-        <Title>Répartition Géographique</Title>
+        <div className="flex justify-between items-center mb-4">
+          <Title>Répartition Géographique</Title>
+          <ExportButton 
+            onClick={() => downloadCSV(
+              geoDistributionData.map(geo => ({
+                'Pays': geo.country,
+                'Nombre de connexions': geo.value
+              })),
+              'repartition-geographique'
+            )} 
+          />
+        </div>
         <div className="flex items-start gap-8">
           <DonutChart
             data={geoDistributionData}
@@ -374,7 +447,21 @@ export default function Dashboard() {
 
       {/* Analyse des Pauses */}
       <Card>
-        <Title>Pauses d&apos;Activité</Title>
+        <div className="flex justify-between items-center mb-4">
+          <Title>Pauses d&apos;Activité</Title>
+          <ExportButton 
+            onClick={() => downloadCSV(
+              data.activity_gaps.map(gap => ({
+                'ID Opérateur': gap.lp_csid,
+                'Nombre de pauses': gap.nb_pauses_detectees,
+                'Durée moyenne (jours)': gap.duree_moyenne_pause,
+                'Plus longue pause (jours)': gap.plus_longue_pause,
+                'Détail des pauses': gap.detail_pauses
+              })),
+              'pauses-activite'
+            )} 
+          />
+        </div>
         <Text className="mb-4">
           Visualisation des périodes d&apos;inactivité des opérateurs. 
           <span className="inline-flex items-center ml-2">
@@ -423,22 +510,33 @@ export default function Dashboard() {
 
       {/* Anomalies d'Activité */}
       <Card>
-        <Title>Anomalies d&apos;Activité</Title>
+        <div className="flex justify-between items-center mb-4">
+          <Title>Anomalies d&apos;Activité</Title>
+          <ExportButton 
+            onClick={() => downloadCSV(
+              displayedAnomalies.map(anomaly => ({
+                'Date': anomaly.date,
+                'Type d\'anomalie': anomaly.type_anomalie,
+                'Nombre de connexions': anomaly.nb_connexions,
+                'Moyenne habituelle': anomaly.moyenne_connexions,
+                'Variation (%)': anomaly.variation_pourcentage,
+                'Opérateurs concernés': anomaly.operateurs.join(', ')
+              })),
+              'anomalies'
+            )} 
+          />
+        </div>
         <Text className="text-sm text-gray-500 mb-4">
           Détection des pics et chutes d&apos;activité significatifs (plus de 2 écarts-types par rapport à la moyenne).
         </Text>
         <div className="space-y-4 mt-4 max-h-[600px] overflow-y-auto pr-2">
-          {(showAllAnomalies ? data.anomalies : data.anomalies.slice(0, 5)).map((anomaly, index) => (
+          {displayedAnomalies.map((anomaly, index) => (
             <div key={index} className="border-b pb-4 last:border-b-0">
               <div className="flex justify-between items-start mb-2">
                 <div>
-                  <OperatorId id={anomaly.lp_csid} className="font-medium" />
+                  <Text className="font-medium">{anomaly.date}</Text>
                   <Text className="text-sm text-gray-500">
-                    {new Date(anomaly.date).toLocaleDateString('fr-FR', { 
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric'
-                    })}
+                    {anomaly.operateurs.length} opérateur(s) concerné(s)
                   </Text>
                 </div>
                 <div className={`px-2 py-1 rounded text-sm ${
@@ -472,7 +570,7 @@ export default function Dashboard() {
             </div>
           ))} 
         </div>
-        {data.anomalies.length > 5 && (
+        {aggregatedAnomalies.length > 5 && (
           <div className="flex justify-center mt-4">
             <button
               onClick={() => setShowAllAnomalies(!showAllAnomalies)}
@@ -483,7 +581,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {data.anomalies.length === 0 && (
+        {aggregatedAnomalies.length === 0 && (
           <div className="text-center text-gray-500 mt-4">
             <Text>Aucune anomalie détectée pour le moment.</Text>
           </div>
