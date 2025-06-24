@@ -10,6 +10,7 @@ WITH monthly_stats AS (
     WHERE lp_csid IS NOT NULL 
         AND timestamp >= CURRENT_DATE - INTERVAL '12 months'
         AND asn_domain != 'docaposte.com'
+        AND client_id_identification_avancee LIKE '%IN App%'
     GROUP BY lp_csid, DATE_TRUNC('month', timestamp)
 ),
 with_variation AS (

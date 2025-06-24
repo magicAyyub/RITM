@@ -14,6 +14,7 @@ import { OperatorId } from "@/components/ui/OperatorId"
 // tabs go here
 import { fetchFromAPI } from "./api/operators/route"
 import { ExportButton } from "@/components/ui/ExportButton"
+import { ChevronUpDownIcon } from "@heroicons/react/24/outline"
 import { downloadCSV } from "@/lib/exportUtils"
 
 interface OperatorData {
@@ -92,10 +93,39 @@ export default function Dashboard() {
   })
 
   const [loading, setLoading] = useState(true)
+
+  // Loader pour les cards
+  const renderLoader = () => (
+    <div className="flex items-center justify-center h-full">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+    </div>
+  )
+
+  // Loader pour les tableaux
+  const renderTableLoader = () => (
+    <div className="flex items-center justify-center h-64">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+    </div>
+  )
+
+  // Loader pour les graphiques
+  const renderChartLoader = () => (
+    <div className="flex items-center justify-center h-48">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+    </div>
+  )
+
+  // Loader pour les métriques
+  const renderMetricLoader = () => (
+    <div className="flex items-center justify-center h-24">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+    </div>
+  )
   const [timeRange, setTimeRange] = useState<'7j' | '30j' | '90j'>('30j')
   const [topLimit, setTopLimit] = useState(10)
   const [showAllGaps, setShowAllGaps] = useState(false)
   const [showAllAnomalies, setShowAllAnomalies] = useState(false)
+  const [sortByPause, setSortByPause] = useState<'asc' | 'desc'>('desc')
 
   useEffect(() => {
     const fetchData = async () => {
@@ -248,106 +278,126 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <Title>Opérateurs</Title>
-          <Metric>{totalOperators}</Metric>
-          <Text>Total enregistrés</Text>
+          {loading ? renderMetricLoader() : (
+            <>
+              <Metric>{totalOperators}</Metric>
+              <Text>Total enregistrés</Text>
+            </>
+          )}
         </Card>
         <Card>
           <Title>Connexions</Title>
-          <Metric>{totalConnections.toLocaleString()}</Metric>
-          <Text>Total historique (hors domaine docaposte.com)</Text>
+          {loading ? renderMetricLoader() : (
+            <>
+              <Metric>{totalConnections.toLocaleString()}</Metric>
+              <Text>Total historique (hors domaine docaposte.com)</Text>
+            </>
+          )}
         </Card>
         <Card>
           <Title>Moyenne/Opérateur</Title>
-          <Metric>{avgConnectionsPerOperator.toLocaleString()}</Metric>
-          <Text>Connexions moyennes</Text>
+          {loading ? renderMetricLoader() : (
+            <>
+              <Metric>{avgConnectionsPerOperator.toLocaleString()}</Metric>
+              <Text>Connexions moyennes</Text>
+            </>
+          )}
         </Card>
       </div>
 
       {/* Section Top Opérateurs */}
       <Card>
-        <div className="flex justify-between items-center mb-4">
-          <Title>Top Opérateurs</Title>
-          <div className="flex items-center gap-2">
-            <select
-              value={topLimit}
-              onChange={(e) => setTopLimit(Number(e.target.value))}
-              className="rounded-md border border-gray-300 px-3 py-1 text-sm"
-            >
-              {[5, 10, 15, 20].map(num => (
-                <option key={num} value={num}>Top {num}</option>
-              ))}
-            </select>
-            <ExportButton 
-              onClick={() => downloadCSV(
-                data.top_operators.map(op => ({
-                  'ID Opérateur': op.lp_csid,
-                  'Nombre de connexions': op.count,
-                  'IPs uniques': op.unique_ips,
-                  'Clients uniques': op.unique_clients
-                })),
-                'top-operateurs'
-              )} 
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-6 items-center">
-          <div className="lg:col-span-1">
-            <BarChart
-              data={topOperatorsData}
-              index="name"
-              categories={["value"]}
-              colors={["blue"]}
-              valueFormatter={(value) => value.toLocaleString()}
-              yAxisWidth={80}
-              showLegend={false}
-              className="h-80"
-            />
-          </div>
-        </div>
+        {loading ? renderChartLoader() : (
+          <>
+            <div className="flex justify-between items-center mb-4">
+              <Title>Top Opérateurs</Title>
+              <div className="flex items-center gap-2">
+                <select
+                  value={topLimit}
+                  onChange={(e) => setTopLimit(Number(e.target.value))}
+                  className="rounded-md border border-gray-300 px-3 py-1 text-sm"
+                >
+                  {[5, 10, 15, 20].map(num => (
+                    <option key={num} value={num}>Top {num}</option>
+                  ))}
+                </select>
+                <ExportButton 
+                  onClick={() => downloadCSV(
+                    data.top_operators.map(op => ({
+                      'ID Opérateur': op.lp_csid,
+                      'Nombre de connexions': op.count,
+                      'IPs uniques': op.unique_ips,
+                      'Clients uniques': op.unique_clients
+                    })),
+                    'top-operateurs'
+                  )} 
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-6 items-center">
+              <div className="lg:col-span-1">
+                <BarChart
+                  data={topOperatorsData}
+                  index="name"
+                  categories={["value"]}
+                  colors={["blue"]}
+                  valueFormatter={(value) => value.toLocaleString()}
+                  yAxisWidth={80}
+                  showLegend={false}
+                  className="h-80"
+                />
+              </div>
+            </div>
+          </>
+        )}
       </Card>
 
       {/* Analyse Temporelle */}
       <Card>
-        <div className="flex justify-between items-center mb-4">
-          <Title>Analyse Temporelle</Title>
-          <ExportButton 
-            onClick={() => downloadCSV(
-              monthlyActivityData.map(stat => ({
-                'Mois': stat.mois,
-                'Nombre de connexions': stat.nb_connexions
-              })),
-              'activite-mensuelle'
-            )} 
-          />
-        </div>
-        <Tabs defaultValue="mensuelle">
-          <TabsList>
-            <TabsTrigger value="mensuelle">Mensuelle</TabsTrigger>
-            <TabsTrigger value="hebdomadaire">Hebdomadaire</TabsTrigger>
-          </TabsList>
-          <TabsContent value="mensuelle">
-            <AreaChart
-              data={monthlyActivityData}
-              index="mois"
-              categories={["nb_connexions"]}
-              colors={["blue"]}
-              valueFormatter={(value) => value.toLocaleString()}
-              showLegend={false}
-              className="h-80 mt-4"
-            />
-          </TabsContent>
-          <TabsContent value="hebdomadaire">
-            <BarChart
-              data={weeklyPatternsByDay}
-              index="jour"
-              categories={["nb_connexions"]}
-              colors={["emerald"]}
-              valueFormatter={(value) => value.toLocaleString()}
-              showLegend={false}
-              className="h-80 mt-4"
-            />
-          </TabsContent>
-        </Tabs>
+        {loading ? renderChartLoader() : (
+          <>
+            <div className="flex justify-between items-center mb-4">
+              <Title>Analyse Temporelle</Title>
+              <ExportButton 
+                onClick={() => downloadCSV(
+                  monthlyActivityData.map(stat => ({
+                    'Mois': stat.mois,
+                    'Nombre de connexions': stat.nb_connexions
+                  })),
+                  'activite-mensuelle'
+                )} 
+              />
+            </div>
+            <Tabs defaultValue="mensuelle">
+              <TabsList>
+                <TabsTrigger value="mensuelle">Mensuelle</TabsTrigger>
+                <TabsTrigger value="hebdomadaire">Hebdomadaire</TabsTrigger>
+              </TabsList>
+              <TabsContent value="mensuelle">
+                <AreaChart
+                  data={monthlyActivityData}
+                  index="mois"
+                  categories={["nb_connexions"]}
+                  colors={["blue"]}
+                  valueFormatter={(value) => value.toLocaleString()}
+                  showLegend={false}
+                  className="h-80 mt-4"
+                />
+              </TabsContent>
+              <TabsContent value="hebdomadaire">
+                <BarChart
+                  data={weeklyPatternsByDay}
+                  index="jour"
+                  categories={["nb_connexions"]}
+                  colors={["emerald"]}
+                  valueFormatter={(value) => value.toLocaleString()}
+                  showLegend={false}
+                  className="h-80 mt-4"
+                />
+              </TabsContent>
+            </Tabs>
+          </>
+        )}
       </Card>
 
       <Card>
@@ -439,18 +489,29 @@ export default function Dashboard() {
       {/* Analyse des Pauses */}
       <Card>
         <div className="flex justify-between items-center mb-4">
-          <Title>Pauses d&apos;Activité</Title>
+          <div className="flex items-center gap-2">
+            <Title>Pauses d&apos;Activité</Title>
+            <button
+              onClick={() => setSortByPause(prev => prev === 'asc' ? 'desc' : 'asc')}
+              className="p-1 text-sm hover:bg-gray-100 rounded"
+              title="Trier par plus longue pause"
+            >
+              <ChevronUpDownIcon className="w-4 h-4" />
+            </button>
+          </div>
           <ExportButton 
-            onClick={() => downloadCSV(
-              data.activity_gaps.map(gap => ({
-                'ID Opérateur': gap.lp_csid,
-                'Nombre de pauses': gap.nb_pauses_detectees,
-                'Durée moyenne (jours)': gap.duree_moyenne_pause,
-                'Plus longue pause (jours)': gap.plus_longue_pause,
-                'Détail des pauses': gap.detail_pauses
-              })),
-              'pauses-activite'
-            )} 
+            onClick={() => {
+              const sortedGaps = data.activity_gaps
+                .sort((a, b) => sortByPause === 'asc' ? a.plus_longue_pause - b.plus_longue_pause : b.plus_longue_pause - a.plus_longue_pause)
+                .map(gap => ({
+                  'ID Opérateur': gap.lp_csid,
+                  'Nombre de pauses': gap.nb_pauses_detectees,
+                  'Durée moyenne (jours)': gap.duree_moyenne_pause,
+                  'Plus longue pause (jours)': gap.plus_longue_pause,
+                  'Détail des pauses': gap.detail_pauses
+                }));
+              downloadCSV(sortedGaps, 'pauses-activite');
+            }}
           />
         </div>
         <Text className="mb-4">
@@ -463,7 +524,9 @@ export default function Dashboard() {
         </Text>
         
         <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
-          {displayedGaps.map((operator, index) => (
+          {data.activity_gaps
+            .sort((a, b) => sortByPause === 'asc' ? a.plus_longue_pause - b.plus_longue_pause : b.plus_longue_pause - a.plus_longue_pause)
+            .map((operator, index) => (
             <div key={index} className="space-y-2 border-b pb-4 last:border-b-0">
               <div className="flex justify-between items-center">
                 <OperatorId id={operator.lp_csid} className="font-medium" />
