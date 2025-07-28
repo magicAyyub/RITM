@@ -14,7 +14,7 @@ import { OperatorId } from "@/components/ui/OperatorId"
 // tabs go here
 import { fetchFromAPI } from "./api/operators/route"
 import { ExportButton } from "@/components/ui/ExportButton"
-import { ChevronUpDownIcon } from "@heroicons/react/24/outline"
+import { ChevronUpDownIcon, ChevronUpIcon } from "@heroicons/react/24/outline"
 import { downloadCSV } from "@/lib/exportUtils"
 import { Button } from "@/components/Button"
 import { WeeklyPatternsChart } from "@/components/charts/WeeklyPatternsChart"
@@ -82,10 +82,49 @@ export default function Dashboard() {
   const [showAllGaps, setShowAllGaps] = useState(false)
   const [showAllAnomalies, setShowAllAnomalies] = useState(false)
   const [sortByPause, setSortByPause] = useState<'asc' | 'desc'>('desc')
-  const [showInAppOnly, setShowInAppOnly] = useState(false)
+  const [showInAppOnly, setShowInAppOnly] = useState(() => {
+    // Persister le filtre dans localStorage
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('dashboardFilterInAppOnly')
+      return saved ? JSON.parse(saved) : false
+    }
+    return false
+  })
+  const [showBackToTop, setShowBackToTop] = useState(false)
+
+  // Sauvegarder le state du filtre dans localStorage quand il change
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('dashboardFilterInAppOnly', JSON.stringify(showInAppOnly))
+      console.log('Dashboard: Filtre sauvegardé:', showInAppOnly)
+    }
+  }, [showInAppOnly])
+
+  // Debug pour surveiller les changements
+  useEffect(() => {
+    console.log('Dashboard: showInAppOnly changé:', showInAppOnly)
+  }, [showInAppOnly])
 
   // Utilise notre hook personnalisé pour récupérer toutes les données
   const { data, loading } = useDashboardData(topLimit, showInAppOnly)
+
+  // Effet pour détecter le scroll et afficher le bouton back to top
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowBackToTop(window.scrollY > 300)
+    }
+
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // Fonction pour remonter en haut
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    })
+  }
 
   // Loader pour les métriques
   const renderMetricLoader = () => (
@@ -185,16 +224,36 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Filtre Global Fixe */}
-      <div className="fixed top-4 right-4 z-50 bg-white shadow-lg rounded-lg border p-4">
+      {/* Header avec Filtre Global intégré */}
+      <div className="flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+        <div>
+          <Title className="text-xl">Dashboard Opérateurs</Title>
+          <Text className="text-sm text-gray-600">Vue d&apos;ensemble de l&apos;activité des opérateurs</Text>
+        </div>
         <div className="flex items-center gap-3">
-          <Text className="font-medium text-sm whitespace-nowrap">Filtre Global:</Text>
-          <Tabs value={showInAppOnly ? "in-app" : "all"} onValueChange={(value) => setShowInAppOnly(value === "in-app")}>
-            <TabsList className="h-8">
-              <TabsTrigger value="all" className="text-xs px-3 py-1">Toutes</TabsTrigger>
-              <TabsTrigger value="in-app" className="text-xs px-3 py-1">IN App</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <Text className="text-sm font-medium text-gray-700">Affichage:</Text>
+          <div className="flex bg-white rounded-lg p-1 shadow-sm">
+            <button
+              onClick={() => setShowInAppOnly(false)}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                !showInAppOnly 
+                  ? 'bg-blue-500 text-white shadow-sm' 
+                  : 'text-gray-600 hover:bg-gray-50 cursor-pointer'
+              }`}
+            >
+              Toutes les connexions
+            </button>
+            <button
+              onClick={() => setShowInAppOnly(true)}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                showInAppOnly 
+                  ? 'bg-blue-500 text-white shadow-sm' 
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              IN App uniquement
+            </button>
+          </div>
         </div>
       </div>
 
@@ -557,6 +616,17 @@ export default function Dashboard() {
           </div>
         )}
       </Card>
+
+      {/* Bouton Back to Top */}
+      {showBackToTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-6 right-6 z-50 bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-full shadow-lg transition-all duration-300 hover:shadow-xl"
+          title="Remonter en haut pour accéder au filtre"
+        >
+          <ChevronUpIcon className="w-6 h-6" />
+        </button>
+      )}
     </div>
   )
 }

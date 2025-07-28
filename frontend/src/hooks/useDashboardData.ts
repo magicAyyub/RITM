@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { fetchFromAPI } from '@/app/api/operators/route'
 
 interface DashboardData {
@@ -21,9 +21,10 @@ export function useDashboardData(topLimit: number, showInAppOnly: boolean) {
   })
   const [loading, setLoading] = useState(true)
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true)
+      console.log('useDashboardData: Fetching data avec:', { topLimit, showInAppOnly })
       
       const [
         operatorDashboard,
@@ -54,11 +55,12 @@ export function useDashboardData(topLimit: number, showInAppOnly: boolean) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [topLimit, showInAppOnly])
 
   useEffect(() => {
+    console.log('useDashboardData: Paramètres changés:', { topLimit, showInAppOnly })
     fetchData()
-  }, [topLimit, showInAppOnly])
+  }, [topLimit, showInAppOnly, fetchData])
 
   return { data, loading, refetch: fetchData }
 }
