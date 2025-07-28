@@ -1,7 +1,6 @@
 import React from 'react'
 import { AreaChart } from "@/components/ui/AreaChart"
 import { Card } from "@/components/Card"
-import { Tabs, TabsList, TabsTrigger } from "@/components/Tabs"
 import { Title } from "@/components/ui/Title"
 import { Text } from "@/components/ui/Text"
 import { ExportButton } from "@/components/ui/ExportButton"
@@ -10,10 +9,9 @@ import { useWeeklyPatterns } from '@/hooks/useWeeklyPatterns'
 
 interface WeeklyPatternsChartProps {
   showInAppOnly: boolean
-  onModeChange: (inAppOnly: boolean) => void
 }
 
-export function WeeklyPatternsChart({ showInAppOnly, onModeChange }: WeeklyPatternsChartProps) {
+export function WeeklyPatternsChart({ showInAppOnly }: WeeklyPatternsChartProps) {
   const { loading, getFormattedData, getExportData } = useWeeklyPatterns()
 
   const renderChartLoader = () => (
@@ -33,17 +31,13 @@ export function WeeklyPatternsChart({ showInAppOnly, onModeChange }: WeeklyPatte
   return (
     <Card>
       <div className="flex justify-between items-center mb-4">
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center gap-2">
           <Title>Patterns d&apos;Activité Hebdomadaire</Title>
-          <Tabs 
-            value={showInAppOnly ? "in-app" : "all"} 
-            onValueChange={(value) => onModeChange(value === "in-app")}
-          >
-            <TabsList>
-              <TabsTrigger value="all">Toutes les connexions</TabsTrigger>
-              <TabsTrigger value="in-app">IN App uniquement</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {showInAppOnly && (
+            <div className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
+              IN App
+            </div>
+          )}
         </div>
         <ExportButton 
           onClick={() => downloadCSV(

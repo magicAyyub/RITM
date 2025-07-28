@@ -18,6 +18,7 @@ import { ChevronUpDownIcon } from "@heroicons/react/24/outline"
 import { downloadCSV } from "@/lib/exportUtils"
 import { Button } from "@/components/Button"
 import { WeeklyPatternsChart } from "@/components/charts/WeeklyPatternsChart"
+import { useDashboardData } from "@/hooks/useDashboardData"
 
 interface OperatorData {
   lp_csid: string
@@ -76,34 +77,19 @@ interface Anomaly {
 }
 
 export default function Dashboard() {
-  const [data, setData] = useState<{
-    operator_dashboard: OperatorData[]
-    monthly_stats: MonthlyStat[]
-    activity_gaps: ActivityGap[]
-    top_operators: TopOperator[]
-    geo_distributions: GeoDistribution[]
-    anomalies: Anomaly[]
-  }>({
-    operator_dashboard: [],
-    monthly_stats: [],
-    activity_gaps: [],
-    top_operators: [],
-    geo_distributions: [],
-    anomalies: []
-  })
+  const [timeRange, setTimeRange] = useState<'7j' | '30j' | '90j'>('30j')
+  const [topLimit, setTopLimit] = useState(10)
+  const [showAllGaps, setShowAllGaps] = useState(false)
+  const [showAllAnomalies, setShowAllAnomalies] = useState(false)
+  const [sortByPause, setSortByPause] = useState<'asc' | 'desc'>('desc')
+  const [showInAppOnly, setShowInAppOnly] = useState(false)
 
-  const [loading, setLoading] = useState(true)
+  // Utilise notre hook personnalisé pour récupérer toutes les données
+  const { data, loading } = useDashboardData(topLimit, showInAppOnly)
 
-  // Loader pour les cards
-  const renderLoader = () => (
-    <div className="flex items-center justify-center h-full">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-    </div>
-  )
-
-  // Loader pour les tableaux
-  const renderTableLoader = () => (
-    <div className="flex items-center justify-center h-64">
+  // Loader pour les métriques
+  const renderMetricLoader = () => (
+    <div className="flex items-center justify-center h-24">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
     </div>
   )
@@ -114,58 +100,6 @@ export default function Dashboard() {
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
     </div>
   )
-
-  // Loader pour les métriques
-  const renderMetricLoader = () => (
-    <div className="flex items-center justify-center h-24">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-    </div>
-  )
-  const [timeRange, setTimeRange] = useState<'7j' | '30j' | '90j'>('30j')
-  const [topLimit, setTopLimit] = useState(10)
-  const [showAllGaps, setShowAllGaps] = useState(false)
-  const [showAllAnomalies, setShowAllAnomalies] = useState(false)
-  const [sortByPause, setSortByPause] = useState<'asc' | 'desc'>('desc')
-  const [showInAppOnly, setShowInAppOnly] = useState(false)
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true)
-        
-        const [
-          operatorDashboard,
-          monthlyStats,
-          activityGaps,
-          topOperators,
-          geoDistributions,
-          anomalies
-        ] = await Promise.all([
-          fetchFromAPI('/operator-dashboard'),
-          fetchFromAPI(`/monthly-stats?top_x=${topLimit}`),
-          fetchFromAPI('/activity-gaps'),
-          fetchFromAPI(`/top-operators?limit=${topLimit}`),
-          fetchFromAPI('/geo-distributions'),
-          fetchFromAPI('/anomalies')
-        ])
-
-        setData({
-          operator_dashboard: operatorDashboard.operator_dashboard || [],
-          monthly_stats: monthlyStats.monthly_stats || [],
-          activity_gaps: activityGaps.activity_gaps || [],
-          top_operators: topOperators || [],  
-          geo_distributions: geoDistributions || [],
-          anomalies: anomalies.anomalies || []
-        })
-      } catch (error) {
-        console.error('Error fetching data:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [topLimit, timeRange, showAllGaps, showAllAnomalies])
 
   // Calcul des KPI
   const totalOperators = data.operator_dashboard.length
@@ -251,32 +185,66 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Filtre Global Fixe */}
+      <div className="fixed top-4 right-4 z-50 bg-white shadow-lg rounded-lg border p-4">
+        <div className="flex items-center gap-3">
+          <Text className="font-medium text-sm whitespace-nowrap">Filtre Global:</Text>
+          <Tabs value={showInAppOnly ? "in-app" : "all"} onValueChange={(value) => setShowInAppOnly(value === "in-app")}>
+            <TabsList className="h-8">
+              <TabsTrigger value="all" className="text-xs px-3 py-1">Toutes</TabsTrigger>
+              <TabsTrigger value="in-app" className="text-xs px-3 py-1">IN App</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+      </div>
+
       {/* Header avec KPI */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
-          <Title>Opérateurs</Title>
+          <div className="flex items-center gap-2">
+            <Title>Opérateurs</Title>
+            {showInAppOnly && (
+              <div className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
+                IN App
+              </div>
+            )}
+          </div>
           {loading ? renderMetricLoader() : (
             <>
               <Metric>{totalOperators}</Metric>
-              <Text>Total enregistrés</Text>
+              <Text>Total enregistrés{showInAppOnly ? ' (IN App)' : ''}</Text>
             </>
           )}
         </Card>
         <Card>
-          <Title>Connexions</Title>
+          <div className="flex items-center gap-2">
+            <Title>Connexions</Title>
+            {showInAppOnly && (
+              <div className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
+                IN App
+              </div>
+            )}
+          </div>
           {loading ? renderMetricLoader() : (
             <>
               <Metric>{totalConnections.toLocaleString()}</Metric>
-              <Text>Total historique (hors domaine docaposte.com)</Text>
+              <Text>Total historique{showInAppOnly ? ' (IN App)' : ' (hors domaine docaposte.com)'}</Text>
             </>
           )}
         </Card>
         <Card>
-          <Title>Moyenne/Opérateur</Title>
+          <div className="flex items-center gap-2">
+            <Title>Moyenne/Opérateur</Title>
+            {showInAppOnly && (
+              <div className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
+                IN App
+              </div>
+            )}
+          </div>
           {loading ? renderMetricLoader() : (
             <>
               <Metric>{avgConnectionsPerOperator.toLocaleString()}</Metric>
-              <Text>Connexions moyennes</Text>
+              <Text>Connexions moyennes{showInAppOnly ? ' (IN App)' : ''}</Text>
             </>
           )}
         </Card>
@@ -287,7 +255,14 @@ export default function Dashboard() {
         {loading ? renderChartLoader() : (
           <>
             <div className="flex justify-between items-center mb-4">
-              <Title>Top Opérateurs</Title>
+              <div className="flex items-center gap-2">
+                <Title>Top Opérateurs</Title>
+                {showInAppOnly && (
+                  <div className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
+                    IN App
+                  </div>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 <select
                   value={topLimit}
@@ -306,7 +281,7 @@ export default function Dashboard() {
                       'IPs uniques': op.unique_ips,
                       'Clients uniques': op.unique_clients
                     })),
-                    'top-operateurs'
+                    `top-operateurs${showInAppOnly ? '-in-app' : ''}`
                   )} 
                 />
               </div>
@@ -334,14 +309,21 @@ export default function Dashboard() {
         {loading ? renderChartLoader() : (
           <>
             <div className="flex justify-between items-center mb-4">
-              <Title>Analyse Temporelle</Title>
+              <div className="flex items-center gap-2">
+                <Title>Analyse Temporelle</Title>
+                {showInAppOnly && (
+                  <div className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
+                    IN App
+                  </div>
+                )}
+              </div>
               <ExportButton 
                 onClick={() => downloadCSV(
                   monthlyActivityData.map(stat => ({
                     'Mois': stat.mois,
                     'Nombre de connexions': stat.nb_connexions
                   })),
-                  'activite-mensuelle'
+                  `activite-mensuelle${showInAppOnly ? '-in-app' : ''}`
                 )} 
               />
             </div>
@@ -368,20 +350,26 @@ export default function Dashboard() {
       {/* Patterns d'Activité Hebdomadaire */}
       <WeeklyPatternsChart 
         showInAppOnly={showInAppOnly}
-        onModeChange={setShowInAppOnly}
       />
 
       {/* Analyse Géographique */}
       <Card>
         <div className="flex justify-between items-center mb-4">
-          <Title>Répartition Géographique</Title>
+          <div className="flex items-center gap-2">
+            <Title>Répartition Géographique</Title>
+            {showInAppOnly && (
+              <div className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
+                IN App
+              </div>
+            )}
+          </div>
           <ExportButton 
             onClick={() => downloadCSV(
               geoDistributionData.map(geo => ({
                 'Pays': geo.country,
                 'Nombre de connexions': geo.value
               })),
-              'repartition-geographique'
+              `repartition-geographique${showInAppOnly ? '-in-app' : ''}`
             )} 
           />
         </div>

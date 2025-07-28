@@ -12,7 +12,7 @@ WITH operator_summary AS (
     WHERE lp_csid IS NOT NULL 
         AND timestamp >= CURRENT_DATE - INTERVAL '90 days'
         AND asn_domain != 'docaposte.com'
-        --AND client_id_identification_avancee LIKE '%IN App%'
+        AND (CASE WHEN ? THEN client_id_identification_avancee LIKE '%IN App%' ELSE 1 END)
     GROUP BY lp_csid
 )
 SELECT 

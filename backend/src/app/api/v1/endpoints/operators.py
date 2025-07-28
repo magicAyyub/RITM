@@ -47,12 +47,12 @@ class SQLQuery(BaseModel):
 
 
 @router.get("/operator-dashboard")
-def get_operator_dashboard() -> Dict[str, Any]:
+def get_operator_dashboard(in_app_only: bool = Query(False, description="Filtrer uniquement les connexions 'IN App'")) -> Dict[str, Any]:
     """Get comprehensive operator dashboard"""
     try:
         conn = get_db()
         query_str = sql_from_file("operator-dashboard.sql")
-        result = conn.execute(query_str).fetchdf()
+        result = conn.execute(query_str, (in_app_only,)).fetchdf()
         if result.empty:
             return {"operator_dashboard": []}
         return {"operator_dashboard": result.to_dict('records')}
@@ -60,7 +60,7 @@ def get_operator_dashboard() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e)) 
 
 @router.get("/monthly-stats")
-def get_monthly_stats(top_x: int = 10) -> Dict[str, Any]:
+def get_monthly_stats(top_x: int = 10, in_app_only: bool = Query(False, description="Filtrer uniquement les connexions 'IN App'")) -> Dict[str, Any]:
     """Get monthly statistics for top x operators.
     """
     try:
@@ -68,7 +68,7 @@ def get_monthly_stats(top_x: int = 10) -> Dict[str, Any]:
         query_str = sql_from_file("monthly-stats.sql")
         result = conn.execute(f"""
             {query_str}
-        """, (top_x,)).fetchdf()
+        """, (in_app_only, top_x)).fetchdf()
 
         if result.empty:
             return {"monthly_stats": []}
@@ -116,7 +116,7 @@ def get_activity_gaps() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/top-operators", response_model=List[OperatorStats])
-def get_top_operators(limit: int = Query(10, ge=1)):
+def get_top_operators(limit: int = Query(10, ge=1), in_app_only: bool = Query(False, description="Filtrer uniquement les connexions 'IN App'")):
     """
     Récupère les N opérateurs les plus actifs par volume de logs.<br> 
     Cette fonction retourne les N opérateurs les plus actifs en fonction du nombre d'événements de log qu'ils ont générés.<br>
@@ -148,7 +148,7 @@ def get_top_operators(limit: int = Query(10, ge=1)):
     query_str = sql_from_file("top-operators.sql")
     df = conn.execute(f"""
         {query_str}
-    """, (limit,)).fetchdf()
+    """, (in_app_only, limit)).fetchdf()
     return df.to_dict(orient='records')
 
 @router.get("/inactivity-periods")
@@ -190,14 +190,14 @@ def get_inactivity_periods(
     return df.to_dict(orient='records')
 
 @router.get("/geo-distributions")
-def get_geo_distribution():
-    """voir si les connexions d’opérateurs proviennent de plusieurs régions/pays/IP → sécurité, mobilité
+def get_geo_distribution(in_app_only: bool = Query(False, description="Filtrer uniquement les connexions 'IN App'")):
+    """voir si les connexions d'opérateurs proviennent de plusieurs régions/pays/IP → sécurité, mobilité
     """
     conn = get_db()
     query_str = sql_from_file("geo-distributions.sql")
     df = conn.execute(f"""
         {query_str}
-    """).fetchdf()
+    """, (in_app_only,)).fetchdf()
     if df.empty:
         return {"geo_distribution": []}
     return df.to_dict(orient='records')
