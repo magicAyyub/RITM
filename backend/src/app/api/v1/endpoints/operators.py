@@ -77,12 +77,12 @@ def get_monthly_stats(top_x: int = 10) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/weekly-patterns")
-def get_weekly_patterns() -> Dict[str, Any]:
+def get_weekly_patterns(in_app_only: bool = Query(False, description="Filtrer uniquement les connexions 'IN App'")) -> Dict[str, Any]:
     """Get weekly activity patterns for operators"""
     try:
         conn = get_db()
         query_str = sql_from_file("weekly-patterns.sql")
-        result = conn.execute(query_str).fetchdf()
+        result = conn.execute(query_str, (in_app_only,)).fetchdf()
         if result.empty:
             return {"weekly_patterns": []}   
         return {"weekly_patterns": result.to_dict('records')}

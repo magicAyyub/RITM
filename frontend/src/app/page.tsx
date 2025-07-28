@@ -16,6 +16,8 @@ import { fetchFromAPI } from "./api/operators/route"
 import { ExportButton } from "@/components/ui/ExportButton"
 import { ChevronUpDownIcon } from "@heroicons/react/24/outline"
 import { downloadCSV } from "@/lib/exportUtils"
+import { Button } from "@/components/Button"
+import { WeeklyPatternsChart } from "@/components/charts/WeeklyPatternsChart"
 
 interface OperatorData {
   lp_csid: string
@@ -77,7 +79,6 @@ export default function Dashboard() {
   const [data, setData] = useState<{
     operator_dashboard: OperatorData[]
     monthly_stats: MonthlyStat[]
-    weekly_patterns: WeeklyPattern[]
     activity_gaps: ActivityGap[]
     top_operators: TopOperator[]
     geo_distributions: GeoDistribution[]
@@ -85,7 +86,6 @@ export default function Dashboard() {
   }>({
     operator_dashboard: [],
     monthly_stats: [],
-    weekly_patterns: [],
     activity_gaps: [],
     top_operators: [],
     geo_distributions: [],
@@ -126,6 +126,7 @@ export default function Dashboard() {
   const [showAllGaps, setShowAllGaps] = useState(false)
   const [showAllAnomalies, setShowAllAnomalies] = useState(false)
   const [sortByPause, setSortByPause] = useState<'asc' | 'desc'>('desc')
+  const [showInAppOnly, setShowInAppOnly] = useState(false)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -135,7 +136,6 @@ export default function Dashboard() {
         const [
           operatorDashboard,
           monthlyStats,
-          weeklyPatterns,
           activityGaps,
           topOperators,
           geoDistributions,
@@ -143,7 +143,6 @@ export default function Dashboard() {
         ] = await Promise.all([
           fetchFromAPI('/operator-dashboard'),
           fetchFromAPI(`/monthly-stats?top_x=${topLimit}`),
-          fetchFromAPI('/weekly-patterns'),
           fetchFromAPI('/activity-gaps'),
           fetchFromAPI(`/top-operators?limit=${topLimit}`),
           fetchFromAPI('/geo-distributions'),
@@ -153,9 +152,8 @@ export default function Dashboard() {
         setData({
           operator_dashboard: operatorDashboard.operator_dashboard || [],
           monthly_stats: monthlyStats.monthly_stats || [],
-          weekly_patterns: weeklyPatterns.weekly_patterns || [],
           activity_gaps: activityGaps.activity_gaps || [],
-          top_operators: topOperators || [],
+          top_operators: topOperators || [],  
           geo_distributions: geoDistributions || [],
           anomalies: anomalies.anomalies || []
         })
@@ -197,27 +195,6 @@ export default function Dashboard() {
     }
     return acc
   }, []).sort((a, b) => new Date(a.mois).getTime() - new Date(b.mois).getTime())
-
-  // Agrégation des données hebdomadaires par jour uniquement
-  const weeklyPatternsByDay = data.weekly_patterns.reduce((acc: any[], pattern) => {
-    const day = pattern.nom_jour
-    const existing = acc.find(item => item.jour === day)
-    
-    if (existing) {
-      existing.nb_connexions += pattern.nb_connexions
-      existing.nb_clients_uniques += pattern.nb_clients_uniques
-      existing.nb_ips_uniques += pattern.nb_ips_uniques
-    } else {
-      acc.push({
-        jour: day,
-        nb_connexions: pattern.nb_connexions,
-        nb_clients_uniques: pattern.nb_clients_uniques,
-        nb_ips_uniques: pattern.nb_ips_uniques,
-        jour_semaine: pattern.jour_semaine
-      })
-    }
-    return acc
-  }, []).sort((a, b) => a.jour_semaine - b.jour_semaine)
 
   // Agrégation des données géographiques par pays uniquement
   const geoDistributionData = data.geo_distributions.reduce((acc: any[], geo) => {
@@ -371,7 +348,6 @@ export default function Dashboard() {
             <Tabs defaultValue="mensuelle">
               <TabsList>
                 <TabsTrigger value="mensuelle">Mensuelle</TabsTrigger>
-                <TabsTrigger value="hebdomadaire">Hebdomadaire</TabsTrigger>
               </TabsList>
               <TabsContent value="mensuelle">
                 <AreaChart
@@ -384,64 +360,16 @@ export default function Dashboard() {
                   className="h-80 mt-4"
                 />
               </TabsContent>
-              <TabsContent value="hebdomadaire">
-                <BarChart
-                  data={weeklyPatternsByDay}
-                  index="jour"
-                  categories={["nb_connexions"]}
-                  colors={["emerald"]}
-                  valueFormatter={(value) => value.toLocaleString()}
-                  showLegend={false}
-                  className="h-80 mt-4"
-                />
-              </TabsContent>
             </Tabs>
           </>
         )}
       </Card>
 
-      <Card>
-        <div className="flex justify-between items-center mb-4">
-          <Title>Activité Hebdomadaire détaillée</Title>
-          <ExportButton 
-            onClick={() => downloadCSV(
-              data.weekly_patterns.map(pattern => ({
-                'Date': new Date(pattern.jour).toLocaleDateString('fr-FR'),
-                'Jour': pattern.nom_jour,
-                'ID Opérateur': pattern.lp_csid,
-                'Nombre de connexions': pattern.nb_connexions,
-                'Clients uniques': pattern.nb_clients_uniques,
-                'IPs uniques': pattern.nb_ips_uniques
-              })),
-              'activite-hebdomadaire'
-            )} 
-          />
-        </div>
-        <Text className="text-sm text-gray-500 mb-4">
-          Détail de l'activité par jour, avec connexions, clients uniques et IPs uniques. (Sur 8 semaines)
-        </Text>
-        <AreaChart
-          className="mt-6 h-80"
-          data={data.weekly_patterns.map(item => ({
-            ...item,
-            jour_formate: item.jour
-              ? new Date(item.jour).toLocaleDateString('fr-FR', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric'
-                })
-              : ''
-          }))}
-          index="jour_formate"
-          categories={['nb_connexions', 'nb_clients_uniques', 'nb_ips_uniques']}
-          colors={['blue', 'emerald', 'violet']}
-          showLegend={true}
-          showYAxis
-          showXAxis
-          valueFormatter={(number: number) => number.toLocaleString()}
-          yAxisWidth={50}
-        />
-      </Card>
+      {/* Patterns d'Activité Hebdomadaire */}
+      <WeeklyPatternsChart 
+        showInAppOnly={showInAppOnly}
+        onModeChange={setShowInAppOnly}
+      />
 
       {/* Analyse Géographique */}
       <Card>

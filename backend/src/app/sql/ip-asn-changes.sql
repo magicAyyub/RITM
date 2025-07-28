@@ -6,5 +6,6 @@ SELECT
 FROM prepared_data
 WHERE timestamp >= CURRENT_DATE - INTERVAL '8 weeks'
     AND lp_csid IS NOT NULL
+    --AND client_id_identification_avancee LIKE '%IN App%'
 GROUP BY lp_csid
 ORDER BY nb_asn_diff DESC;

@@ -3,6 +3,7 @@ WITH ordered_logs AS (
     FROM prepared_data
     WHERE lp_csid = ?
     AND asn_domain != 'docaposte.com'
+    --AND client_id_identification_avancee LIKE '%IN App%'
     ORDER BY date
 ),
 gaps AS (

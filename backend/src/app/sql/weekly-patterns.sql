@@ -11,6 +11,7 @@ WITH filtered_data AS (
     WHERE timestamp >= CURRENT_DATE - INTERVAL '8 weeks'
         AND lp_csid IS NOT NULL
         AND asn_domain != 'docaposte.com'
+        AND (CASE WHEN ? THEN client_id_identification_avancee LIKE '%IN App%' ELSE 1 END)
     GROUP BY lp_csid, DATE(timestamp), EXTRACT(DOW FROM timestamp)
 )
 SELECT 
